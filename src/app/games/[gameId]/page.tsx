@@ -8,20 +8,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { ArrowLeft, CheckCircle2, Trophy, Play, Info } from 'lucide-react';
-import React, { useContext, useEffect, useState, useRef, useCallback } from 'react';
+import React, { useContext, useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { ProgressContext } from '@/components/layout/MainLayout';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { KpopArcheryGame } from '@/lib/game'; // Import the game class
+import { KpopArcheryGame } from '@/lib/game';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 
 export default function MiniGamePage() {
   const params = useParams();
   const gameId = params.gameId as string;
-  const gameDetails = miniGames.find(g => g.id === gameId); // Renamed to avoid conflict
+  const gameDetails = miniGames.find(g => g.id === gameId);
   const progressContext = useContext(ProgressContext);
   const { toast } = useToast();
 
@@ -32,13 +32,13 @@ export default function MiniGamePage() {
   const [username, setUsername] = useState('');
   const [selectedGroup, setSelectedGroup] = useState('');
   const [newGroup, setNewGroup] = useState('');
-  const [manualScore, setManualScore] = useState<number | ''>(''); // For manual score entry
+  const [manualScore, setManualScore] = useState<number | ''>('');
   
   const [gameScore, setGameScore] = useState(0);
   const [arrowsLeft, setArrowsLeft] = useState(10);
   const [isGameActive, setIsGameActive] = useState(false);
   const [submittedScoreDetails, setSubmittedScoreDetails] = useState<{ score: number; username: string; group: string } | null>(null);
-  const [isPreGame, setIsPreGame] = useState(true); // To show instructions/start button
+  const [isPreGame, setIsPreGame] = useState(true);
 
   useEffect(() => {
     setIsClient(true);
@@ -65,16 +65,20 @@ export default function MiniGamePage() {
   }, []);
 
   const handleGameOver = useCallback((finalScore: number, newBest: boolean) => {
-    setIsGameActive(false);
-    setManualScore(finalScore); // Pre-fill the manual score input with game score
+    setIsGameActive(false); // This will also trigger cleanup in the game start useEffect
+    setManualScore(finalScore);
     toast({
       title: "Game Over!",
       description: `You scored ${finalScore} points.${newBest ? " That's a new personal best for this game!" : ""}`,
       duration: 5000,
     });
-    // The score submission form will now be visible
   }, [toast]);
 
+  const gameOptions = useMemo(() => ({
+    onScoreUpdate: handleScoreUpdate,
+    onArrowsUpdate: handleArrowsUpdate,
+    onGameOver: handleGameOver,
+  }), [handleScoreUpdate, handleArrowsUpdate, handleGameOver]);
 
   const startGame = () => {
     const finalGroup = newGroup.trim() || selectedGroup;
@@ -87,34 +91,52 @@ export default function MiniGamePage() {
       return;
     }
 
-    if (canvasRef.current) {
-      if (gameInstanceRef.current) {
-        gameInstanceRef.current.destroy(); // Clean up existing instance
-      }
-      const gameOptions = {
-        onScoreUpdate: handleScoreUpdate,
-        onArrowsUpdate: handleArrowsUpdate,
-        onGameOver: handleGameOver,
-      };
-      gameInstanceRef.current = new KpopArcheryGame(canvasRef.current, gameOptions);
-      gameInstanceRef.current.start();
-      setIsGameActive(true);
-      setIsPreGame(false);
-      setSubmittedScoreDetails(null); // Clear previous submission details
-      setGameScore(0); // Reset game score display
-      setArrowsLeft(10); // Reset arrows display
+    // If a game instance exists from a previous "Play Again" that wasn't fully cleaned up, destroy it.
+    if (gameInstanceRef.current) {
+        console.log("Destroying existing game instance before starting new one in startGame");
+        gameInstanceRef.current.destroy();
+        gameInstanceRef.current = null;
     }
+
+    setIsPreGame(false); // Trigger transition to game view
+    setIsGameActive(true); // Indicate game is conceptually active
+    setSubmittedScoreDetails(null); 
+    setGameScore(0); 
+    setArrowsLeft(10); 
   };
 
+  // Effect to initialize and start the game when isPreGame becomes false and game is active
   useEffect(() => {
-    // Cleanup game instance on component unmount or if gameId changes
+    if (!isPreGame && isGameActive && canvasRef.current) {
+      if (!gameInstanceRef.current) { // Only create if it doesn't exist
+        console.log("Initializing KpopArcheryGame instance via useEffect");
+        gameInstanceRef.current = new KpopArcheryGame(canvasRef.current, gameOptions);
+        gameInstanceRef.current.start();
+      }
+    }
+
+    // Cleanup function for when isGameActive becomes false or component unmounts while game active
     return () => {
-      if (gameInstanceRef.current) {
+      if (gameInstanceRef.current && !isGameActive) { 
+        // This condition means game was active, but now isGameActive is false (e.g. gameOver, playAgain)
+        console.log("Destroying KpopArcheryGame instance because isGameActive became false.");
         gameInstanceRef.current.destroy();
         gameInstanceRef.current = null;
       }
     };
-  }, [gameId]);
+  }, [isPreGame, isGameActive, gameOptions]); // canvasRef is stable, gameOptions is memoized
+
+
+  // Cleanup game instance on component unmount
+  useEffect(() => {
+    return () => {
+      if (gameInstanceRef.current) {
+        console.log("Destroying KpopArcheryGame instance due to component unmount.");
+        gameInstanceRef.current.destroy();
+        gameInstanceRef.current = null;
+      }
+    };
+  }, []); // Empty dependency array means this runs once on mount for its return (cleanup) on unmount
 
 
   if (!gameDetails) {
@@ -158,19 +180,17 @@ export default function MiniGamePage() {
 
     setSubmittedScoreDetails({ score: numericScore, username: username.trim(), group: finalGroup });
     toast({ title: "Score Submitted!", description: `Your score of ${numericScore} for ${gameDetails.name} has been recorded.`, className: "bg-green-500 text-white" });
-    setIsPreGame(true); // Go back to pre-game state for next round
+    setIsPreGame(true); 
+    // isGameActive should already be false from handleGameOver
   };
 
   const handlePlayAgain = () => {
     setSubmittedScoreDetails(null);
     setManualScore('');
-    setIsPreGame(true); // Show instructions and start button
-    setIsGameActive(false);
-    if (gameInstanceRef.current) {
-        gameInstanceRef.current.destroy(); // Properly destroy old game
-        gameInstanceRef.current = null; 
-    }
-    // User details (username, group) remain for convenience
+    // Setting isGameActive to false will trigger the cleanup in the useEffect
+    setIsGameActive(false); 
+    // Setting isPreGame to true will hide the canvas and show instructions
+    setIsPreGame(true);
   };
   
   const displayGroup = newGroup.trim() || selectedGroup;
@@ -205,7 +225,6 @@ export default function MiniGamePage() {
         </CardHeader>
         <CardContent className="p-6 md:p-8">
           <div className="space-y-6">
-             {/* User Details Form - Always visible before game starts or after submission */}
             { (isPreGame || submittedScoreDetails || (!isGameActive && !submittedScoreDetails) ) && !gameCompleted && (
                  <Card className="p-6 bg-muted/50">
                  <CardTitle className="text-xl mb-4 font-headline text-primary">Player Details</CardTitle>
@@ -235,7 +254,6 @@ export default function MiniGamePage() {
                </Card>
             )}
 
-            {/* Game Active UI or Score Submission Form */}
             {!submittedScoreDetails && !gameCompleted && !isPreGame && isGameActive && (
                  <div className="bg-primary/10 p-4 rounded-lg text-center">
                     <p className="text-2xl font-bold text-primary font-headline">SCORE: {gameScore}</p>
@@ -243,7 +261,7 @@ export default function MiniGamePage() {
                 </div>
             )}
 
-            {!submittedScoreDetails && !gameCompleted && !isPreGame && !isGameActive && ( // Show score form after game over
+            {!submittedScoreDetails && !gameCompleted && !isPreGame && !isGameActive && ( 
               <Card className="p-6 bg-muted/50">
                 <CardTitle className="text-xl mb-4 font-headline text-primary">Submit Your Score</CardTitle>
                 <div className="space-y-4">
@@ -315,7 +333,6 @@ export default function MiniGamePage() {
               <canvas ref={canvasRef} id="gameCanvas" className="border border-input rounded-lg w-full h-full max-w-full max-h-full"></canvas>
             </div>
             <div id="gameUIMessages" className="text-center mt-4">
-               {/* In-game score and arrows are now displayed above the canvas when game is active */}
             </div>
           </div>
         </CardContent>

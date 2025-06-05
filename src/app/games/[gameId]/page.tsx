@@ -16,6 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { KpopArcheryGame } from '@/lib/game';
 import Image from 'next/image';
 import AdSenseUnit from '@/components/AdSenseUnit';
+import RotateDevicePrompt from '@/components/RotateDevicePrompt';
 
 
 export default function MiniGamePage() {
@@ -40,19 +41,17 @@ export default function MiniGamePage() {
   const [isGameActive, setIsGameActive] = useState(false);
   const [submittedScoreDetails, setSubmittedScoreDetails] = useState<{ score: number; username: string; group: string } | null>(null);
   const [isPreGame, setIsPreGame] = useState(true);
+  const [showRotatePrompt, setShowRotatePrompt] = useState(false);
 
 
   useEffect(() => {
     setIsClient(true);
-    console.log("React: MiniGamePage mounted. isClient set to true.");
     const storedUsername = localStorage.getItem('isacStudioUsername');
     if (storedUsername) {
       setUsername(storedUsername);
-      console.log("React: Loaded username from localStorage:", storedUsername);
     }
     const storedGroup = localStorage.getItem('isacStudioGroup');
     if (storedGroup) {
-      console.log("React: Loaded group from localStorage:", storedGroup);
       if (kpopGroups.includes(storedGroup)) {
         setSelectedGroup(storedGroup);
       } else {
@@ -61,24 +60,46 @@ export default function MiniGamePage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!isClient) return;
+
+    const handleOrientationChange = () => {
+      const isPortrait = window.innerHeight > window.innerWidth;
+      const isLikelyMobile = window.matchMedia("(max-width: 767px)").matches;
+
+      if (isPortrait && isLikelyMobile) {
+        setShowRotatePrompt(true);
+      } else {
+        setShowRotatePrompt(false);
+      }
+    };
+
+    handleOrientationChange(); // Initial check
+
+    window.addEventListener('resize', handleOrientationChange);
+    window.addEventListener('orientationchange', handleOrientationChange);
+
+    return () => {
+      window.removeEventListener('resize', handleOrientationChange);
+      window.removeEventListener('orientationchange', handleOrientationChange);
+    };
+  }, [isClient]);
+
+
   const handleScoreUpdate = useCallback((newScore: number) => {
-    console.log("React: KpopArcheryGame score update:", newScore);
     setGameScore(newScore);
   }, []);
 
   const handleArrowsUpdate = useCallback((newArrows: number) => {
-    console.log("React: KpopArcheryGame arrows update:", newArrows);
     setArrowsLeft(newArrows);
   }, []);
 
   const handleGameOver = useCallback((finalScore: number, isNewBest: boolean) => {
-    console.log("React: KpopArcheryGame handleGameOver called with score", finalScore, "isNewBest", isNewBest);
-    setIsGameActive(false); 
-    setManualScore(finalScore); 
+    setIsGameActive(false);
+    setManualScore(finalScore);
 
     if (isNewBest && gameId) {
         localStorage.setItem(`bestScore_${gameId}`, finalScore.toString());
-        console.log(`React: New personal best FOR GAME ${gameId} saved: ${finalScore}`);
     }
 
     toast({
@@ -90,9 +111,8 @@ export default function MiniGamePage() {
 
 
   const isGameEffectivelyActive = useCallback(() => {
-    console.log("React: KpopArcheryGame checking isGameEffectivelyActive, current isGameActive state:", isGameActive);
-    return isGameActive;
-  }, [isGameActive]);
+    return isGameActive && !showRotatePrompt; // Game logic should pause if rotate prompt is shown
+  }, [isGameActive, showRotatePrompt]);
 
   const gameOptions = useMemo(() => ({
     onScoreUpdate: handleScoreUpdate,
@@ -103,38 +123,28 @@ export default function MiniGamePage() {
 
 
   const initializeAndStartGame = useCallback(() => {
-    if (canvasRef.current && !gameInstanceRef.current && gameId) {
-      console.log("React: Initializing KpopArcheryGame instance via initializeAndStartGame.");
+    if (canvasRef.current && !gameInstanceRef.current && gameId && !showRotatePrompt) {
       const personalBest = parseInt(localStorage.getItem(`bestScore_${gameId}`) || '0');
       gameInstanceRef.current = new KpopArcheryGame(canvasRef.current, gameOptions);
       gameInstanceRef.current.start(personalBest);
-    } else if (gameInstanceRef.current && !isGameActive && gameId) {
-      // This condition might be redundant if destroy() is called properly on game over/play again
-      console.log("React: Attempting to restart existing KpopArcheryGame instance (should be rare if cleanup is good).");
-      const personalBest = parseInt(localStorage.getItem(`bestScore_${gameId}`) || '0');
-      gameInstanceRef.current.start(personalBest);
     }
-  }, [gameOptions, gameId, isGameActive]); 
+  }, [gameOptions, gameId, showRotatePrompt]);
 
  useEffect(() => {
-    console.log(`React Effect: isPreGame=${isPreGame}, isGameActive=${isGameActive}`);
-    if (!isPreGame && isGameActive) {
-      console.log("React Effect: Conditions met to initialize and start game (isPreGame=false, isGameActive=true).");
+    if (!isPreGame && isGameActive && !showRotatePrompt) {
       initializeAndStartGame();
     }
 
     return () => {
-      if (gameInstanceRef.current && (!isGameActive || isPreGame)) {
-        console.log("React Effect Cleanup: Destroying KpopArcheryGame instance because isGameActive became false OR isPreGame became true OR component unmounting.");
+      if (gameInstanceRef.current && (!isGameActive || isPreGame || showRotatePrompt)) {
         gameInstanceRef.current.destroy();
         gameInstanceRef.current = null;
       }
     };
-  }, [isPreGame, isGameActive, initializeAndStartGame]); 
+  }, [isPreGame, isGameActive, initializeAndStartGame, showRotatePrompt]);
 
 
   const handleStartGameClick = () => {
-    console.log("React: handleStartGameClick triggered.");
     const finalGroup = newGroup.trim() || selectedGroup;
     if (!username.trim()) {
       toast({ title: "Details Needed", description: "Please enter your X username before starting.", variant: "destructive" });
@@ -146,7 +156,6 @@ export default function MiniGamePage() {
     }
 
     if (gameInstanceRef.current) {
-        console.log("React: handleStartGameClick - Destroying existing game instance before starting new one.");
         gameInstanceRef.current.destroy();
         gameInstanceRef.current = null;
     }
@@ -155,18 +164,16 @@ export default function MiniGamePage() {
     localStorage.setItem('isacStudioGroup', finalGroup);
 
     setIsPreGame(false);
-    setIsGameActive(true); 
-    setSubmittedScoreDetails(null); 
-    setGameScore(0); 
+    setIsGameActive(true);
+    setSubmittedScoreDetails(null);
+    setGameScore(0);
     setArrowsLeft(10);
-    setManualScore(''); 
-    console.log("React: handleStartGameClick - Set isPreGame=false, isGameActive=true. Game should start via useEffect.");
+    setManualScore('');
   };
 
   useEffect(() => {
     return () => {
       if (gameInstanceRef.current) {
-        console.log("React Component Unmount: Destroying KpopArcheryGame instance.");
         gameInstanceRef.current.destroy();
         gameInstanceRef.current = null;
       }
@@ -188,7 +195,6 @@ export default function MiniGamePage() {
   }
 
   const handleScoreSubmit = () => {
-    console.log("React: handleScoreSubmit triggered.");
     const finalUsername = username.trim();
     const finalGroup = newGroup.trim() || selectedGroup;
 
@@ -210,7 +216,6 @@ export default function MiniGamePage() {
     addScoreToLeaderboard({ username: finalUsername, group: finalGroup, gameId, score: numericScore });
     if (progressContext && !progressContext.isGameCompleted(gameId)) {
       progressContext.completeGame(gameId);
-      console.log(`React: Game ${gameId} marked as completed in context for global progress.`);
     }
     
     localStorage.setItem('isacStudioUsername', finalUsername);
@@ -218,14 +223,10 @@ export default function MiniGamePage() {
 
     setSubmittedScoreDetails({ score: numericScore, username: finalUsername, group: finalGroup });
     toast({ title: "Score Submitted!", description: `Your score of ${numericScore} for ${gameDetails.name} has been recorded for the leaderboards.`, className: "bg-green-500 text-white" });
-    
-    console.log("React: handleScoreSubmit - Score submitted. submittedScoreDetails is now set.");
   };
 
   const handlePlayAgain = () => {
-    console.log("React: handlePlayAgain triggered.");
     if (gameInstanceRef.current) {
-        console.log("React: handlePlayAgain - Destroying active game instance if any.");
         gameInstanceRef.current.destroy();
         gameInstanceRef.current = null;
     }
@@ -234,166 +235,165 @@ export default function MiniGamePage() {
     setManualScore('');
     setGameScore(0);
     setArrowsLeft(10);
-    setIsGameActive(false); 
-    setIsPreGame(true);     
-
-    console.log("React: handlePlayAgain - States reset. isPreGame=true, isGameActive=false. Player forms should re-appear.");
+    setIsGameActive(false);
+    setIsPreGame(true);
   };
   
 
   return (
-    <div className="space-y-8">
-      <Button variant="outline" asChild className="mb-6 group">
-        <Link href="/">
-          <ArrowLeft className="mr-2 h-4 w-4 transition-transform group-hover:-translate-x-1" />
-          Back to All Games
-        </Link>
-      </Button>
+    <div className="space-y-8 relative">
+      {showRotatePrompt && <RotateDevicePrompt />}
+      <div className={showRotatePrompt ? 'opacity-20 pointer-events-none' : ''}> {/* Dim and disable interaction if prompt shown */}
+        <Button variant="outline" asChild className="mb-6 group">
+          <Link href="/">
+            <ArrowLeft className="mr-2 h-4 w-4 transition-transform group-hover:-translate-x-1" />
+            Back to All Games
+          </Link>
+        </Button>
 
-      <Card className="overflow-hidden shadow-xl rounded-xl">
-        <CardHeader className="p-0 relative">
-          <div className="relative w-full h-64 md:h-80">
-            <Image
-              src="/assets/banner.png"
-              alt="Game Banner"
-              layout="fill"
-              objectFit="cover"
-              data-ai-hint="game banner"
-              priority
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-          </div>
-          <div className="absolute bottom-0 left-0 p-6">
-            <gameDetails.icon className="h-12 w-12 text-white mb-2 drop-shadow-lg" />
-            <CardTitle className="font-headline text-4xl text-white drop-shadow-md">{gameDetails.name}</CardTitle>
-            <CardDescription className="text-gray-200 text-lg drop-shadow-sm">{gameDetails.description}</CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent className="p-6 md:p-8">
-          {submittedScoreDetails ? (
-            <div className="text-center p-6 border border-green-500 bg-green-50 rounded-xl shadow-lg">
-              <CheckCircle2 className="h-12 w-12 text-green-600 mx-auto mb-3" />
-              <p className="text-2xl font-semibold text-green-700 font-headline">
-                Score Submitted for {gameDetails.name}!
-              </p>
-              <p className="text-lg text-green-600 mt-1">Player: {submittedScoreDetails.username}</p>
-              <p className="text-lg text-green-600">Group: {submittedScoreDetails.group}</p>
-              <p className="text-3xl font-bold text-accent my-3">{submittedScoreDetails.score} points</p>
-              <p className="text-muted-foreground text-sm mt-2">Thank you for participating!</p>
-              <div className="mt-4 space-x-3">
-                 <Button onClick={handlePlayAgain} variant="outline">
-                    Play Again
-                 </Button>
-                 <Button asChild>
-                   <Link href="/leaderboard">View Leaderboards</Link>
-                 </Button>
-              </div>
+        <Card className="overflow-hidden shadow-xl rounded-xl">
+          <CardHeader className="p-0 relative">
+            <div className="relative w-full h-64 md:h-80">
+              <Image
+                src="/assets/banner.png"
+                alt="Game Banner"
+                layout="fill"
+                objectFit="cover"
+                data-ai-hint="game banner"
+                priority
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
             </div>
-          ) : isPreGame ? (
-            <div className="space-y-6">
-              <Card className="p-6 bg-muted/50">
-                <CardTitle className="text-xl mb-4 font-headline text-primary">Player Details</CardTitle>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="username" className="text-foreground/80">X Username</Label>
-                    <Input id="username" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="@yourusername" className="mt-1"/>
-                  </div>
-                  <div>
-                    <Label htmlFor="groupSelect" className="text-foreground/80">Select Your K-pop Group</Label>
-                    <Select value={selectedGroup} onValueChange={(value) => { setSelectedGroup(value); setNewGroup(''); }}>
-                      <SelectTrigger id="groupSelect" className="mt-1">
-                        <SelectValue placeholder="-- Select Your Group --" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {kpopGroups.map(groupName => (
-                          <SelectItem key={groupName} value={groupName}>{groupName} ({fanbaseMap[groupName] || 'N/A'})</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="newGroup" className="text-foreground/80">Or Enter New Group Name</Label>
-                    <Input id="newGroup" value={newGroup} onChange={(e) => { setNewGroup(e.target.value); if (e.target.value) setSelectedGroup(''); }} placeholder="If not in list or for sub-units" className="mt-1"/>
-                  </div>
-                </div>
-              </Card>
-              <div className="bg-muted rounded-lg flex flex-col items-center justify-center p-6 min-h-[400px] md:min-h-[600px] w-full aspect-video max-w-full mx-auto shadow-inner text-center">
-                <gameDetails.icon className="h-24 w-24 text-primary mb-6" />
-                <h3 className="text-3xl font-bold font-headline text-primary mb-4">Ready for {gameDetails.name}?</h3>
-                <p className="text-muted-foreground mb-6 max-w-md">
-                  Make sure you've entered your X Username and K-Pop Group above.
-                  Then, click Start Game to begin! Use <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Spacebar</kbd> or tap/click the screen to shoot.
+            <div className="absolute bottom-0 left-0 p-6">
+              <gameDetails.icon className="h-12 w-12 text-white mb-2 drop-shadow-lg" />
+              <CardTitle className="font-headline text-4xl text-white drop-shadow-md">{gameDetails.name}</CardTitle>
+              <CardDescription className="text-gray-200 text-lg drop-shadow-sm">{gameDetails.description}</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent className="p-6 md:p-8">
+            {submittedScoreDetails ? (
+              <div className="text-center p-6 border border-green-500 bg-green-50 rounded-xl shadow-lg">
+                <CheckCircle2 className="h-12 w-12 text-green-600 mx-auto mb-3" />
+                <p className="text-2xl font-semibold text-green-700 font-headline">
+                  Score Submitted for {gameDetails.name}!
                 </p>
-                <Button onClick={handleStartGameClick} size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold">
-                  <Play className="mr-2 h-6 w-6" /> Start Game
-                </Button>
+                <p className="text-lg text-green-600 mt-1">Player: {submittedScoreDetails.username}</p>
+                <p className="text-lg text-green-600">Group: {submittedScoreDetails.group}</p>
+                <p className="text-3xl font-bold text-accent my-3">{submittedScoreDetails.score} points</p>
+                <p className="text-muted-foreground text-sm mt-2">Thank you for participating!</p>
+                <div className="mt-4 space-x-3">
+                  <Button onClick={handlePlayAgain} variant="outline">
+                      Play Again
+                  </Button>
+                  <Button asChild>
+                    <Link href="/leaderboard">View Leaderboards</Link>
+                  </Button>
+                </div>
               </div>
-            </div>
-          ) : isGameActive ? (
-            <div className="space-y-4">
-              <div className="bg-primary/10 p-4 rounded-lg text-center">
-                <p className="text-2xl font-bold text-primary font-headline">SCORE: {gameScore}</p>
-                <p className="text-lg text-accent font-semibold">ARROWS: {arrowsLeft}</p>
-              </div>
-              <div className={`bg-muted rounded-lg flex flex-col items-center justify-center p-1 min-h-[400px] md:min-h-[600px] w-full aspect-video max-w-full mx-auto shadow-inner`}>
-                <canvas ref={canvasRef} id="gameCanvas" className="border border-input rounded-lg w-full h-full max-w-full max-h-full"></canvas>
-              </div>
-            </div>
-          ) : ( 
-            <div className="space-y-6">
-              <Card className="p-6 bg-muted/50">
-                  <CardTitle className="text-xl mb-4 font-headline text-primary">Game Over! Submit Your Score</CardTitle>
-                  <div className="space-y-2 mb-4">
-                    <p><span className="font-semibold">Player:</span> {username}</p>
-                    <p><span className="font-semibold">Group:</span> {newGroup.trim() || selectedGroup || 'N/A'}</p>
-                  </div>
+            ) : isPreGame ? (
+              <div className="space-y-6">
+                <Card className="p-6 bg-muted/50">
+                  <CardTitle className="text-xl mb-4 font-headline text-primary">Player Details</CardTitle>
                   <div className="space-y-4">
                     <div>
-                      <Label htmlFor="score" className="text-foreground/80">Your Score (from the game)</Label>
-                      <Input id="score" type="number" value={manualScore} onChange={(e) => setManualScore(e.target.value === '' ? '' : Number(e.target.value))} placeholder="Score from game" className="mt-1" readOnly={true} />
-                       <p className="text-xs text-muted-foreground mt-1">Score is pre-filled from the game. Click submit to record.</p>
+                      <Label htmlFor="username" className="text-foreground/80">X Username</Label>
+                      <Input id="username" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="@yourusername" className="mt-1"/>
                     </div>
-                    <Button
-                      onClick={handleScoreSubmit}
-                      size="lg"
-                      className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground font-semibold"
-                    >
-                      <Trophy className="mr-2 h-5 w-5" /> Submit Score
-                    </Button>
+                    <div>
+                      <Label htmlFor="groupSelect" className="text-foreground/80">Select Your K-pop Group</Label>
+                      <Select value={selectedGroup} onValueChange={(value) => { setSelectedGroup(value); setNewGroup(''); }}>
+                        <SelectTrigger id="groupSelect" className="mt-1">
+                          <SelectValue placeholder="-- Select Your Group --" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {kpopGroups.map(groupName => (
+                            <SelectItem key={groupName} value={groupName}>{groupName} ({fanbaseMap[groupName] || 'N/A'})</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="newGroup" className="text-foreground/80">Or Enter New Group Name</Label>
+                      <Input id="newGroup" value={newGroup} onChange={(e) => { setNewGroup(e.target.value); if (e.target.value) setSelectedGroup(''); }} placeholder="If not in list or for sub-units" className="mt-1"/>
+                    </div>
                   </div>
                 </Card>
-                 <div className="text-center mt-4">
-                    <Button onClick={handlePlayAgain} variant="outline">
-                        Or Play Again Without Submitting
-                    </Button>
+                <div className="bg-muted rounded-lg flex flex-col items-center justify-center p-6 min-h-[400px] md:min-h-[600px] w-full aspect-video max-w-full mx-auto shadow-inner text-center">
+                  <gameDetails.icon className="h-24 w-24 text-primary mb-6" />
+                  <h3 className="text-3xl font-bold font-headline text-primary mb-4">Ready for {gameDetails.name}?</h3>
+                  <p className="text-muted-foreground mb-6 max-w-md">
+                    Make sure you've entered your X Username and K-Pop Group above.
+                    Then, click Start Game to begin! Use <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Spacebar</kbd> or tap/click the screen to shoot.
+                  </p>
+                  <Button onClick={handleStartGameClick} size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold">
+                    <Play className="mr-2 h-6 w-6" /> Start Game
+                  </Button>
                 </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              </div>
+            ) : isGameActive ? (
+              <div className="space-y-4">
+                <div className="bg-primary/10 p-4 rounded-lg text-center">
+                  <p className="text-2xl font-bold text-primary font-headline">SCORE: {gameScore}</p>
+                  <p className="text-lg text-accent font-semibold">ARROWS: {arrowsLeft}</p>
+                </div>
+                <div className={`bg-muted rounded-lg flex flex-col items-center justify-center p-1 min-h-[400px] md:min-h-[600px] w-full aspect-video max-w-full mx-auto shadow-inner`}>
+                  <canvas ref={canvasRef} id="gameCanvas" className="border border-input rounded-lg w-full h-full max-w-full max-h-full"></canvas>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <Card className="p-6 bg-muted/50">
+                    <CardTitle className="text-xl mb-4 font-headline text-primary">Game Over! Submit Your Score</CardTitle>
+                    <div className="space-y-2 mb-4">
+                      <p><span className="font-semibold">Player:</span> {username}</p>
+                      <p><span className="font-semibold">Group:</span> {newGroup.trim() || selectedGroup || 'N/A'}</p>
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="score" className="text-foreground/80">Your Score (from the game)</Label>
+                        <Input id="score" type="number" value={manualScore} onChange={(e) => setManualScore(e.target.value === '' ? '' : Number(e.target.value))} placeholder="Score from game" className="mt-1" readOnly={true} />
+                        <p className="text-xs text-muted-foreground mt-1">Score is pre-filled from the game. Click submit to record.</p>
+                      </div>
+                      <Button
+                        onClick={handleScoreSubmit}
+                        size="lg"
+                        className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground font-semibold"
+                      >
+                        <Trophy className="mr-2 h-5 w-5" /> Submit Score
+                      </Button>
+                    </div>
+                  </Card>
+                  <div className="text-center mt-4">
+                      <Button onClick={handlePlayAgain} variant="outline">
+                          Or Play Again Without Submitting
+                      </Button>
+                  </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-      {isClient && !isPreGame && !isGameActive && !submittedScoreDetails && (
-         <div className="my-8 text-center">
-           <p className="mb-4 text-sm text-muted-foreground">Advertisement</p>
-            <AdSenseUnit
-              adClient="ca-pub-6305491227155574"
-              adSlot="6193979423"
-              className="inline-block" 
-            />
-        </div>
-      )}
-       {isClient && isPreGame && (
-         <div className="my-8 text-center">
-           <p className="mb-4 text-sm text-muted-foreground">Advertisement</p>
-            <AdSenseUnit
-              adClient="ca-pub-6305491227155574"
-              adSlot="6193979423"
-              className="inline-block"
-            />
-        </div>
-      )}
-
-
+        {isClient && !isPreGame && !isGameActive && !submittedScoreDetails && (
+          <div className="my-8 text-center">
+            <p className="mb-4 text-sm text-muted-foreground">Advertisement</p>
+              <AdSenseUnit
+                adClient="ca-pub-6305491227155574"
+                adSlot="6193979423"
+                className="inline-block"
+              />
+          </div>
+        )}
+        {isClient && isPreGame && (
+          <div className="my-8 text-center">
+            <p className="mb-4 text-sm text-muted-foreground">Advertisement</p>
+              <AdSenseUnit
+                adClient="ca-pub-6305491227155574"
+                adSlot="6193979423"
+                className="inline-block"
+              />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

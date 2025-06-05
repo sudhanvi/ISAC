@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import GameProgressBar from '@/components/GameProgressBar';
-import { totalGames } from '@/lib/data';
+import { totalGames, miniGames } from '@/lib/data'; // Added miniGames import
 import { Button } from '@/components/ui/button';
 import { Home, Trophy } from 'lucide-react'; // Added Trophy for leaderboard
 

@@ -22,16 +22,21 @@ runConfig:
 # Environment variables and secrets
 # https://firebase.google.com/docs/app-hosting/configure-env
 env:
+  - variable: FIREBASE_SERVICE_ACCOUNT_JSON_STRING
+    secret: firebase-service-account-isac-studio # Make sure this matches the name of your secret in Secret Manager
+    availability:
+      - RUNTIME # Only needed at runtime for the server actions to connect to Firestore
+
   # Example of a plain text environment variable
-  # - variable: MY_VARIABLE
+  # - variable: MY_OTHER_VARIABLE
   #   value: "my_value"
   #   availability: # Optional: defaults to RUNTIME if not specified
   #     - BUILD
   #     - RUNTIME
 
-  # Example of an environment variable referencing a secret in Cloud Secret Manager
-  # - variable: API_KEY
-  #   secret: myApiKeySecretName # Name of the secret in Secret Manager
+  # Example of another environment variable referencing a secret in Cloud Secret Manager
+  # - variable: ANOTHER_API_KEY
+  #   secret: anotherApiKeySecretName # Name of the secret in Secret Manager
 
   # Example of a secret with a specific version
   # - variable: PINNED_API_KEY

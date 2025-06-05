@@ -2,10 +2,10 @@
 // KpopArcheryGame class adapted for React integration
 
 export class KpopArcheryGame {
-  constructor(canvas, options) {
+  constructor(canvas, options) { // canvas is the DOM element, options contains callbacks
     this.canvas = canvas;
     this.ctx = this.canvas.getContext('2d');
-    this.options = options; // { onScoreUpdate, onArrowsUpdate, onGameOver, getUsername, getGroup }
+    this.options = options; // { onScoreUpdate, onArrowsUpdate, onGameOver }
 
     // AdMob Settings (requires AdMob SDK to be available)
     this.admobAppId = 'ca-app-pub-6305491227155574~9346740465';
@@ -19,7 +19,7 @@ export class KpopArcheryGame {
       console.warn("AdMob SDK not detected. Ads will not function.");
     }
 
-    // Canvas Dimensions
+    // Canvas Dimensions (will be set by resize handler)
     this.w = 0;
     this.h = 0;
     this.resizeObserver = null;
@@ -42,7 +42,7 @@ export class KpopArcheryGame {
 
     // Score, Best Score & Arrows
     this.score = 0;
-    this.bestScore = 0; // Will be loaded from localStorage
+    this.personalBestScore = 0; // Loaded from localStorage via React component
     this.totalArrows = 10;
 
     // Bow Settings
@@ -84,18 +84,20 @@ export class KpopArcheryGame {
   }
 
   initializeCanvasDimensions() {
+    if (!this.canvas) return;
     this.w = this.canvas.width;
     this.h = this.canvas.height;
     this.bow.y = this.h / 2;
-    this.target.x = this.w - 120;
+    this.target.x = this.w - 120; // Keep target on the right
     this.target.y = this.h / 2;
     this.resetArrow();
   }
   
   handleCanvasResize() {
-    if (!this.canvas) return;
-    this.canvas.width = this.canvas.offsetWidth;
-    this.canvas.height = this.canvas.offsetHeight;
+    if (!this.canvas || !this.canvas.parentElement) return;
+    // Ensure canvas uses the size of its parent container for responsiveness
+    this.canvas.width = this.canvas.parentElement.offsetWidth;
+    this.canvas.height = this.canvas.parentElement.offsetHeight;
     this.initializeCanvasDimensions();
   }
 
@@ -112,21 +114,23 @@ export class KpopArcheryGame {
 
     this.rewardedAd = new admob.RewardedAd({ adUnitId: this.rewardedAdUnitId });
 
-    this.rewardedAd.on('adloaded', () => {
+    this.rewardedAd.on('load', () => { // Corrected event name from 'adloaded'
       console.log('Rewarded ad loaded successfully');
     });
-    this.rewardedAd.on('aderror', (error) => {
+    this.rewardedAd.on('error', (error) => { // Corrected event name from 'aderror'
       console.error('Rewarded ad failed to load:', error);
       this.rewardedAd = null; 
     });
-    this.rewardedAd.on('adclosed', () => {
+    this.rewardedAd.on('close', () => { // Corrected event name from 'adclosed'
+      console.log('Rewarded ad closed');
       this.loadRewardedAd(); // Preload next ad
     });
-    this.rewardedAd.on('adrewarded', () => {
+    this.rewardedAd.on('reward', () => { // Corrected event name from 'adrewarded'
+      console.log('Rewarded ad granted reward');
       this.totalArrows += 5;
       this.updateUIViaCallbacks();
     });
-    this.rewardedAd.loadAd();
+    this.rewardedAd.load(); // Corrected method name from 'loadAd'
   }
 
   showRewardedAd() {
@@ -166,13 +170,13 @@ export class KpopArcheryGame {
   }
 
   initListeners() {
+    if (!this.canvas) return;
     this.canvas.addEventListener('click', this.shoot);
     this.canvas.addEventListener('touchstart', this.shoot, { passive: false }); 
     
-    // Keydown listener on document.body
     this.keydownHandler = (e) => {
-      if (e.code === 'Space' && !this.isGameOver) {
-        e.preventDefault(); // Prevent page scroll
+      if (e.code === 'Space' && !this.isGameOver && this.options.isGameEffectivelyActive()) { // Check if game is active via callback
+        e.preventDefault(); 
         this.shoot();
       }
     };
@@ -180,11 +184,15 @@ export class KpopArcheryGame {
   }
 
   removeListeners() {
+    if (!this.canvas) return;
     this.canvas.removeEventListener('click', this.shoot);
     this.canvas.removeEventListener('touchstart', this.shoot);
-    document.body.removeEventListener('keydown', this.keydownHandler);
+    if (this.keydownHandler) {
+      document.body.removeEventListener('keydown', this.keydownHandler);
+    }
     if (this.resizeObserver) {
         this.resizeObserver.disconnect();
+        this.resizeObserver = null;
     }
   }
   
@@ -192,6 +200,7 @@ export class KpopArcheryGame {
     if (this.isGameOver || !this.canvas) {
       if (this.animationFrameId) {
         cancelAnimationFrame(this.animationFrameId);
+        this.animationFrameId = null;
       }
       return;
     }
@@ -201,11 +210,9 @@ export class KpopArcheryGame {
     if (this.loadedAssets.background) {
       this.ctx.drawImage(this.loadedAssets.background, 0, 0, this.w, this.h);
     } else {
-      // Fallback background color if image fails to load
-      this.ctx.fillStyle = '#87CEEB'; // Light Sky Blue
+      this.ctx.fillStyle = '#87CEEB'; 
       this.ctx.fillRect(0, 0, this.w, this.h);
     }
-
 
     this.updateBowPosition();
     this.updateTargetPosition();
@@ -243,9 +250,9 @@ export class KpopArcheryGame {
           this.handleHit();
         }
       }
-      if (this.arrow.x > this.w) {
+      if (this.arrow.x > this.w) { // Arrow went off screen
         this.resetArrow();
-        if (this.totalArrows <= 0) {
+        if (this.totalArrows <= 0 && !this.isGameOver) {
           this.triggerGameOver();
         }
       }
@@ -274,7 +281,7 @@ export class KpopArcheryGame {
 
   shoot(event) {
     if(event && event.type === 'touchstart') {
-        event.preventDefault(); // Essential for preventing click simulation and other default behaviors
+        event.preventDefault(); 
     }
     if (!this.arrow.isFlying && this.totalArrows > 0 && !this.isGameOver) {
       this.arrowReleaseSound.play().catch(e => console.error('Error playing release sound:', e));
@@ -289,10 +296,10 @@ export class KpopArcheryGame {
   handleHit() {
     this.arrowImpactSound.play().catch(e => console.error('Error playing impact sound:', e));
     const hitOffset = Math.abs(this.arrow.y - this.target.y);
-    const points = Math.max(0, 10 - Math.floor(hitOffset / (this.target.height / 20)));
+    const points = Math.max(0, 10 - Math.floor(hitOffset / (this.target.height / 20))); // Max 10 points
     this.score += points;
 
-    if (points >= 9) {
+    if (points >= 9) { // Bullseye or near bullseye
       this.totalArrows += 2;
     }
     this.updateUIViaCallbacks();
@@ -309,7 +316,8 @@ export class KpopArcheryGame {
 
   resetArrow() {
     this.arrow.isFlying = false;
-    this.arrow.x = this.bow.x + this.bow.width / 2;
+    this.arrow.x = this.bow.x + this.bow.width / 2; // Reset to bow's front
+    // Game over due to missed arrow is checked in updateArrowPosition after reset if arrows ran out
   }
 
   updateUIViaCallbacks() {
@@ -320,36 +328,50 @@ export class KpopArcheryGame {
   triggerGameOver() {
     if (this.isGameOver) return;
     this.isGameOver = true;
+    
+    // Stop game loop
     if (this.animationFrameId) {
         cancelAnimationFrame(this.animationFrameId);
+        this.animationFrameId = null;
     }
-    this.removeListeners(); // Clean up listeners on game over
+    // Listeners will be removed by the React component's cleanup effect calling destroy()
 
-    const personalBestScore = parseInt(localStorage.getItem('kpopArcheryBestScore') || '0');
-    if (this.score > personalBestScore) {
-      localStorage.setItem('kpopArcheryBestScore', this.score.toString());
+    // Determine if it's a new personal best (React component will manage actual localStorage for best score)
+    const newBest = this.score > this.personalBestScore; 
+    if (newBest) {
+        this.personalBestScore = this.score; // Update internal tracking for the session
     }
     
     if (this.options.onGameOver) {
-      this.options.onGameOver(this.score, this.score > personalBestScore);
+      this.options.onGameOver(this.score, newBest);
     }
   }
 
-  start() {
+  // Called by React component to initialize/reset the game
+  start(initialBestScore) {
     this.isGameOver = false;
     this.score = 0;
     this.totalArrows = 10;
-    this.bow.dy = 3; // Reset bow speed
+    this.bow.dy = 3; 
     this.bow.speedIncremented = false;
+    this.personalBestScore = initialBestScore || 0;
     
-    this.bestScore = parseInt(localStorage.getItem('kpopArcheryBestScore') || '0');
     this.updateUIViaCallbacks();
     
-    // Ensure canvas is sized before loading assets or starting game loop
-    this.handleCanvasResize(); // Initial size
+    if (!this.canvas || !this.canvas.parentElement) {
+        console.error("Canvas or its parent is not available for sizing.");
+        return;
+    }
     
-    this.resizeObserver = new ResizeObserver(this.handleCanvasResize);
-    this.resizeObserver.observe(this.canvas);
+    // Initial canvas sizing
+    this.handleCanvasResize(); 
+    
+    // Set up ResizeObserver
+    if (!this.resizeObserver) {
+        this.resizeObserver = new ResizeObserver(this.handleCanvasResize);
+    }
+    this.resizeObserver.observe(this.canvas.parentElement);
+
 
     this.loadAssets(() => {
       this.initListeners();
@@ -359,17 +381,20 @@ export class KpopArcheryGame {
     });
   }
 
+  // Called by React component on unmount or when game needs to stop
   destroy() {
-    this.isGameOver = true; // Ensure game loop stops
+    this.isGameOver = true; 
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
     }
-    this.removeListeners();
-    // Any other cleanup specific to the game (e.g., AdMob ad disposal if applicable)
-    if (this.rewardedAd && typeof this.rewardedAd.destroy === 'function') {
-         // this.rewardedAd.destroy(); // If AdMob SDK provides a destroy method
+    this.removeListeners(); // Cleans up canvas and body listeners, and ResizeObserver
+    
+    if (this.rewardedAd && typeof this.rewardedAd.destroy === 'function') { // If AdMob SDK provides a destroy method
+         // this.rewardedAd.destroy(); 
     }
     this.rewardedAd = null;
     console.log("KpopArcheryGame instance destroyed");
   }
 }
+

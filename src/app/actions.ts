@@ -34,20 +34,20 @@ function initializeFirebaseAdmin() {
       if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING) {
         console.error('actions.ts: Snippet of FIREBASE_SERVICE_ACCOUNT_JSON_STRING (first 50 chars):', process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING.substring(0,50));
       }
-      adminApp = undefined; 
+      adminApp = undefined;
     }
   } else {
     adminApp = getApps()[0];
     console.log('actions.ts: Firebase Admin app already initialized.');
   }
 
-  if (adminApp && !db) { 
+  if (adminApp && !db) {
     try {
       db = getFirestore(adminApp);
       console.log('actions.ts: Firestore instance obtained successfully.');
     } catch (error: any) {
       console.error('actions.ts: CRITICAL ERROR obtaining Firestore instance:', error.message, error.stack);
-      db = undefined; 
+      db = undefined;
     }
   } else if (!adminApp) {
     console.error('actions.ts: Cannot get Firestore instance because Firebase Admin App is not initialized.');
@@ -93,7 +93,7 @@ export async function addScoreToLeaderboardAction(payload: AddScorePayload): Pro
     const docRef = await db.collection(LEADERBOARD_COLLECTION).add(newEntryData);
     console.log('Score added to Firestore with ID:', docRef.id);
   } catch (error: any) {
-    console.error('Error in addScoreToLeaderboardAction adding to Firestore:', error.message, error.stack);
+    console.error('Error in addScoreToLeaderboardAction adding to Firestore. Details:', error.message, error.stack, 'About to throw a new error to the client.');
     // This refined error message will be shown in the client toast and Next.js dev overlay.
     throw new Error('Failed to submit score. Server-side error interacting with database. Check server logs for detailed Firestore/Admin SDK errors.');
   }
@@ -103,17 +103,14 @@ export async function getPlayerLeaderboardAction(limit: number = 10): Promise<Pl
   console.log('Server Action: getPlayerLeaderboardAction called');
   if (!db) {
     console.error('getPlayerLeaderboardAction: Firestore is not initialized. Returning empty leaderboard.');
-    // In a real app, you might throw an error or return a specific error state
-    // For now, returning empty to prevent breaking UI if db is not set up.
-    // Consider throwing an error to be consistent with addScoreToLeaderboardAction if db init is critical.
-    return []; 
+    return [];
   }
 
   try {
     const snapshot = await db.collection(LEADERBOARD_COLLECTION)
       .orderBy('score', 'desc')
       .orderBy('timestamp', 'asc')
-      .limit(100) 
+      .limit(100)
       .get();
 
     const entries: LeaderboardEntry[] = [];
@@ -139,15 +136,13 @@ export async function getPlayerLeaderboardAction(limit: number = 10): Promise<Pl
         return a.gamesPlayed - b.gamesPlayed;
       })
       .slice(0, limit);
-      
+
     console.log(`Returning ${sortedPlayers.length} players for leaderboard.`);
     return sortedPlayers;
 
   } catch (error: any) {
     console.error('Error in getPlayerLeaderboardAction fetching from Firestore:', error.message, error.stack);
-    // Optionally re-throw a new error or a more structured error response
-    // throw new Error('Failed to fetch player leaderboard due to a server error. Check server logs.');
-    return []; // Return empty on error to prevent breaking UI
+    return [];
   }
 }
 
@@ -161,7 +156,7 @@ export async function getGroupLeaderboardAction(limit: number = 10): Promise<Gro
     const snapshot = await db.collection(LEADERBOARD_COLLECTION)
       .orderBy('score', 'desc')
       .orderBy('timestamp', 'asc')
-      .limit(200) 
+      .limit(200)
       .get();
 
     const entries: LeaderboardEntry[] = [];
@@ -201,8 +196,6 @@ export async function getGroupLeaderboardAction(limit: number = 10): Promise<Gro
     return sortedGroups;
   } catch (error: any) {
     console.error('Error in getGroupLeaderboardAction fetching from Firestore:', error.message, error.stack);
-    // Optionally re-throw
-    // throw new Error('Failed to fetch group leaderboard due to a server error. Check server logs.');
     return [];
   }
 }

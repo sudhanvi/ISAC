@@ -6,7 +6,7 @@ import Link from 'next/link';
 import GameProgressBar from '@/components/GameProgressBar';
 import { totalGames, miniGames } from '@/lib/data'; // Added miniGames import
 import { Button } from '@/components/ui/button';
-import { Home, Trophy } from 'lucide-react'; // Added Trophy for leaderboard
+import { Home, Trophy, Heart } from 'lucide-react'; // Added Trophy for leaderboard, Heart for support
 
 export const ProgressContext = React.createContext<{
   completedGames: number;
@@ -110,12 +110,17 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           )}
           {children}
         </main>
-        <footer className="py-6 text-center text-sm text-muted-foreground">
-          © {new Date().getFullYear()} ISAC Studio. All rights reserved.
+        <footer className="py-6 text-center text-sm text-muted-foreground flex flex-col items-center space-y-2">
+          <p>© {new Date().getFullYear()} ISAC Studio. All rights reserved.</p>
+          <Button variant="outline" size="sm" asChild>
+            <Link href="https://paypal.me/sidphotos" target="_blank" rel="noopener noreferrer">
+              <Heart className="mr-2 h-4 w-4 text-pink-500" />
+              Support the Creator
+            </Link>
+          </Button>
         </footer>
       </div>
     </ProgressContext.Provider>
   );
 }
-
     

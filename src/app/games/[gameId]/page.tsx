@@ -2,7 +2,7 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import Image from 'next/image'; // Re-added import
+import Image from 'next/image';
 import { miniGames, kpopGroups, addScoreToLeaderboard, fanbaseMap } from '@/lib/data';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -69,14 +69,20 @@ export default function MiniGamePage() {
 
   const handleGameOver = useCallback((finalScore: number, isNewBest: boolean) => {
     console.log("React: KpopArcheryGame handleGameOver called with score", finalScore, "isNewBest", isNewBest);
-    setIsGameActive(false); 
-    setManualScore(finalScore);
+    setIsGameActive(false);
+    setManualScore(finalScore); // Pre-fill submission form
+
+    if (isNewBest && gameId) {
+        localStorage.setItem(`bestScore_${gameId}`, finalScore.toString());
+        console.log(`React: New personal best FOR GAME ${gameId} saved: ${finalScore}`);
+    }
+
     toast({
       title: "Game Over!",
       description: `You scored ${finalScore} points.${isNewBest ? " That's a new personal best for this game!" : ""}`,
       duration: 5000,
     });
-  }, [toast]);
+  }, [toast, gameId]);
 
 
   const isGameEffectivelyActive = useCallback(() => {
@@ -92,17 +98,17 @@ export default function MiniGamePage() {
 
 
   const initializeAndStartGame = useCallback(() => {
-    if (canvasRef.current && !gameInstanceRef.current) {
+    if (canvasRef.current && !gameInstanceRef.current && gameId) {
       console.log("React: Initializing KpopArcheryGame instance via initializeAndStartGame.");
       const personalBest = parseInt(localStorage.getItem(`bestScore_${gameId}`) || '0');
       gameInstanceRef.current = new KpopArcheryGame(canvasRef.current, gameOptions);
       gameInstanceRef.current.start(personalBest);
-    } else if (gameInstanceRef.current && !isGameActive) { 
+    } else if (gameInstanceRef.current && !isGameActive && gameId) {
       console.log("React: Attempting to restart existing KpopArcheryGame instance.");
       const personalBest = parseInt(localStorage.getItem(`bestScore_${gameId}`) || '0');
       gameInstanceRef.current.start(personalBest);
     }
-  }, [gameOptions, gameId, isGameActive]); 
+  }, [gameOptions, gameId, isGameActive]);
 
  useEffect(() => {
     console.log(`React Effect: isPreGame=${isPreGame}, isGameActive=${isGameActive}`);
@@ -112,7 +118,7 @@ export default function MiniGamePage() {
     }
 
     return () => {
-      if (gameInstanceRef.current && !isGameActive) { 
+      if (gameInstanceRef.current && !isGameActive) {
         console.log("React Effect Cleanup: Destroying KpopArcheryGame instance because isGameActive became false OR component unmounting.");
         gameInstanceRef.current.destroy();
         gameInstanceRef.current = null;
@@ -139,11 +145,11 @@ export default function MiniGamePage() {
         gameInstanceRef.current = null;
     }
 
-    setIsPreGame(false); 
-    setIsGameActive(true); 
-    setSubmittedScoreDetails(null); 
-    setGameScore(0); 
-    setArrowsLeft(10); 
+    setIsPreGame(false);
+    setIsGameActive(true);
+    setSubmittedScoreDetails(null);
+    setGameScore(0);
+    setArrowsLeft(10);
     console.log("React: handleStartGameClick - Set isPreGame=false, isGameActive=true. Game should start via useEffect.");
   };
 
@@ -189,27 +195,22 @@ export default function MiniGamePage() {
 
     const numericScore = Number(manualScore);
 
-    const currentBest = parseInt(localStorage.getItem(`bestScore_${gameId}`) || '0');
-    if (numericScore > currentBest) {
-        localStorage.setItem(`bestScore_${gameId}`, numericScore.toString());
-        console.log(`React: New personal best for ${gameId} saved: ${numericScore}`);
-    }
-
 
     addScoreToLeaderboard({ username: username.trim(), group: finalGroup, gameId, score: numericScore });
     if (progressContext && !progressContext.isGameCompleted(gameId)) {
       progressContext.completeGame(gameId);
-      console.log(`React: Game ${gameId} marked as completed in context.`);
+      console.log(`React: Game ${gameId} marked as completed in context for global progress.`);
     }
 
     localStorage.setItem('isacStudioUsername', username.trim());
     localStorage.setItem('isacStudioGroup', finalGroup);
 
     setSubmittedScoreDetails({ score: numericScore, username: username.trim(), group: finalGroup });
-    toast({ title: "Score Submitted!", description: `Your score of ${numericScore} for ${gameDetails.name} has been recorded.`, className: "bg-green-500 text-white" });
+    toast({ title: "Score Submitted!", description: `Your score of ${numericScore} for ${gameDetails.name} has been recorded for the leaderboards.`, className: "bg-green-500 text-white" });
 
-    setIsPreGame(true); 
-    console.log("React: handleScoreSubmit - Score submitted, set isPreGame=true to show results/play again options.");
+    setIsGameActive(false); // Ensure game is not active
+    setIsPreGame(true);
+    console.log("React: handleScoreSubmit - Score submitted to leaderboards, set isPreGame=true to show results/play again options.");
   };
 
   const handlePlayAgain = () => {
@@ -220,21 +221,21 @@ export default function MiniGamePage() {
         gameInstanceRef.current = null;
     }
 
-    setSubmittedScoreDetails(null); 
-    setManualScore(''); 
+    setSubmittedScoreDetails(null);
+    setManualScore('');
 
     setGameScore(0);
     setArrowsLeft(10);
 
-    setIsGameActive(false); 
-    setIsPreGame(true);     
+    setIsGameActive(false);
+    setIsPreGame(true);
 
     console.log("React: handlePlayAgain - States reset. isPreGame=true, isGameActive=false. Player forms should re-appear.");
   };
 
 
   const showResultsScreen = submittedScoreDetails || (gameCompleted && !isPreGame && !isGameActive);
-  
+  ;
 
   return (
     <div className="space-y-8">
@@ -249,12 +250,12 @@ export default function MiniGamePage() {
         <CardHeader className="p-0 relative">
           <div className="relative w-full h-64 md:h-80">
             <Image
-              src="/assets/banner.png" // Updated image source
-              alt="Game Banner" // Updated alt text
+              src="/assets/banner.png"
+              alt="Game Banner"
               layout="fill"
               objectFit="cover"
               data-ai-hint="game banner"
-              priority // Good to add priority for LCP images
+              priority
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
           </div>

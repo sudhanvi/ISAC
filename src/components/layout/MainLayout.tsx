@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -5,7 +6,7 @@ import Link from 'next/link';
 import GameProgressBar from '@/components/GameProgressBar';
 import { totalGames } from '@/lib/data';
 import { Button } from '@/components/ui/button';
-import { Home } from 'lucide-react';
+import { Home, Trophy } from 'lucide-react'; // Added Trophy for leaderboard
 
 export const ProgressContext = React.createContext<{
   completedGames: number;
@@ -54,6 +55,11 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
             <Link href="/" className="text-2xl font-bold font-headline text-primary hover:text-primary/80 transition-colors">
               ISAC Studio
             </Link>
+            {/* Basic nav skeleton for loading state */}
+            <nav className="flex items-center space-x-2">
+                <div className="h-8 w-8 bg-muted rounded-full animate-pulse"></div>
+                <div className="h-8 w-8 bg-muted rounded-full animate-pulse"></div>
+            </nav>
           </div>
         </header>
         <main className="flex-grow container max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -82,18 +88,26 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
             <Link href="/" className="text-2xl font-bold font-headline text-primary hover:text-primary/80 transition-colors">
               ISAC Studio
             </Link>
-            <nav>
-              <Button variant="ghost" size="icon" asChild>
+            <nav className="flex items-center space-x-1">
+              <Button variant="ghost" size="icon" asChild title="Home">
                 <Link href="/">
                   <Home className="h-5 w-5 text-primary" />
                   <span className="sr-only">Home</span>
+                </Link>
+              </Button>
+              <Button variant="ghost" size="icon" asChild title="Leaderboards">
+                <Link href="/leaderboard">
+                  <Trophy className="h-5 w-5 text-primary" />
+                  <span className="sr-only">Leaderboard</span>
                 </Link>
               </Button>
             </nav>
           </div>
         </header>
         <main className="flex-grow container max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <GameProgressBar currentProgress={completedGamesSet.size} totalGames={totalGames} className="mb-8" />
+          {miniGames.length > 1 && ( // Only show progress bar if multiple games exist
+             <GameProgressBar currentProgress={completedGamesSet.size} totalGames={totalGames} className="mb-8" />
+          )}
           {children}
         </main>
         <footer className="py-6 text-center text-sm text-muted-foreground">
@@ -103,3 +117,5 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     </ProgressContext.Provider>
   );
 }
+
+    

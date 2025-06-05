@@ -23,7 +23,7 @@ export default function Home() {
               <CardHeader className="p-0">
                  <div className="relative w-full h-48">
                   <Image
-                    src={game.imagePlaceholder}
+                    src="/assets/stadium-background.png"
                     alt={game.name}
                     layout="fill"
                     objectFit="cover"

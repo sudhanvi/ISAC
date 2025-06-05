@@ -36,7 +36,7 @@ export default function MiniGamePage() {
 
   const [gameScore, setGameScore] = useState(0);
   const [arrowsLeft, setArrowsLeft] = useState(10);
-  
+
   const [isGameActive, setIsGameActive] = useState(false);
   const [submittedScoreDetails, setSubmittedScoreDetails] = useState<{ score: number; username: string; group: string } | null>(null);
   const [isPreGame, setIsPreGame] = useState(true);
@@ -75,10 +75,8 @@ export default function MiniGamePage() {
       duration: 5000,
     });
   }, [toast]);
-  
+
   const isGameEffectivelyActive = useCallback(() => {
-    // This callback is passed to the game instance to check if React considers the game active.
-    // This helps with event listeners in game.js (e.g., spacebar only when game is truly active)
     return isGameActive;
   }, [isGameActive]);
 
@@ -96,26 +94,20 @@ export default function MiniGamePage() {
       gameInstanceRef.current = new KpopArcheryGame(canvasRef.current, gameOptions);
       gameInstanceRef.current.start(personalBest);
     } else if (gameInstanceRef.current && !isGameActive) {
-      // This case handles if the game instance exists but isn't active (e.g., after game over, before submission)
-      // And somehow we are trying to start again. Typically, a new instance is preferred after "Play Again".
       console.log("React: Attempting to restart existing KpopArcheryGame instance.");
       const personalBest = parseInt(localStorage.getItem(`bestScore_${gameId}`) || '0');
-      gameInstanceRef.current.start(personalBest); // Restart the existing instance
+      gameInstanceRef.current.start(personalBest);
     }
-  }, [gameOptions, gameId, isGameActive]); // isGameActive is a dependency.
+  }, [gameOptions, gameId, isGameActive]);
 
  useEffect(() => {
-    // This effect manages the game's lifecycle based on React state
     if (!isPreGame && isGameActive) {
-      // Condition to run the game
       console.log("React Effect: Conditions met to initialize and start game (isPreGame=false, isGameActive=true).");
       initializeAndStartGame();
     }
 
     return () => {
-      // Cleanup for this effect
-      if (gameInstanceRef.current && !isGameActive) { 
-        // If the game instance exists and the game is no longer active (e.g., game over, or "Play Again" clicked)
+      if (gameInstanceRef.current && !isGameActive) {
         console.log("React Effect Cleanup: Destroying KpopArcheryGame instance because isGameActive became false OR component unmounting.");
         gameInstanceRef.current.destroy();
         gameInstanceRef.current = null;
@@ -137,21 +129,19 @@ export default function MiniGamePage() {
     }
 
     if (gameInstanceRef.current) {
-        // If for some reason an old instance exists, destroy it.
         console.log("React: handleStartGameClick - Destroying existing game instance before starting new one.");
         gameInstanceRef.current.destroy();
         gameInstanceRef.current = null;
     }
 
-    setIsPreGame(false); // Transition out of pre-game state
-    setIsGameActive(true); // Activate the game
-    setSubmittedScoreDetails(null); // Clear any previous submission details for this session
-    setGameScore(0); // Reset visual game score
-    setArrowsLeft(10); // Reset visual arrows
+    setIsPreGame(false);
+    setIsGameActive(true);
+    setSubmittedScoreDetails(null);
+    setGameScore(0);
+    setArrowsLeft(10);
     console.log("React: handleStartGameClick - Set isPreGame=false, isGameActive=true. Game should start via useEffect.");
   };
 
-  // Effect for component unmount cleanup
   useEffect(() => {
     return () => {
       if (gameInstanceRef.current) {
@@ -160,7 +150,7 @@ export default function MiniGamePage() {
         gameInstanceRef.current = null;
       }
     };
-  }, []); 
+  }, []);
 
   if (!gameDetails) {
     return (
@@ -204,44 +194,38 @@ export default function MiniGamePage() {
       progressContext.completeGame(gameId);
       console.log(`React: Game ${gameId} marked as completed in context.`);
     }
-    
+
     localStorage.setItem('isacStudioUsername', username.trim());
     localStorage.setItem('isacStudioGroup', finalGroup);
 
     setSubmittedScoreDetails({ score: numericScore, username: username.trim(), group: finalGroup });
     toast({ title: "Score Submitted!", description: `Your score of ${numericScore} for ${gameDetails.name} has been recorded.`, className: "bg-green-500 text-white" });
-    
-    // After submitting, transition to a state where they see the "Play Again" option.
-    // isGameActive is already false (set by handleGameOver).
-    // Setting isPreGame to true here will show the results screen which contains "Play Again".
-    setIsPreGame(true); 
+
+    setIsPreGame(true);
     console.log("React: handleScoreSubmit - Score submitted, set isPreGame=true to show results/play again options.");
   };
 
   const handlePlayAgain = () => {
     console.log("React: handlePlayAgain triggered.");
-    // Explicitly destroy the game instance if it exists
     if (gameInstanceRef.current) {
         console.log("React: handlePlayAgain - Destroying active game instance.");
         gameInstanceRef.current.destroy();
         gameInstanceRef.current = null;
     }
 
-    setSubmittedScoreDetails(null); // Clear submission details from the current session
-    setManualScore(''); // Clear the manual score input
-    
-    // Reset game state variables for the React UI
+    setSubmittedScoreDetails(null);
+    setManualScore('');
+
     setGameScore(0);
     setArrowsLeft(10);
 
-    // Critical state changes to go back to the pre-game form
-    setIsGameActive(false); // Ensure game is not considered active
-    setIsPreGame(true);    // THIS IS KEY: Go back to pre-game state to show forms
+    setIsGameActive(false);
+    setIsPreGame(true);    
 
     console.log("React: handlePlayAgain - States reset. isPreGame=true, isGameActive=false. Player forms should re-appear.");
   };
-  
-  const showResultsScreen = submittedScoreDetails || (gameCompleted && !isPreGame);
+
+  const showResultsScreen = submittedScoreDetails || (gameCompleted && !isPreGame && !isGameActive);
 
   return (
     <div className="space-y-8">
@@ -339,7 +323,7 @@ export default function MiniGamePage() {
               )}
 
               {/* Score Submission Form: Show if game ended (!isGameActive), not in pre-game (!isPreGame), and score not submitted (!submittedScoreDetails) */}
-              {!isPreGame && !isGameActive && !submittedScoreDetails && ( 
+              {!isPreGame && !isGameActive && !submittedScoreDetails && (
                 <Card className="p-6 bg-muted/50">
                   <CardTitle className="text-xl mb-4 font-headline text-primary">Submit Your Score</CardTitle>
                   <div className="space-y-4">
@@ -357,36 +341,32 @@ export default function MiniGamePage() {
                   </div>
                 </Card>
               )}
-              
-              {/* Pre-Game Instructions / Start Button: Show if in pre-game state */}
-              {isPreGame && (
-                  <div className="bg-muted rounded-lg flex flex-col items-center justify-center p-6 min-h-[400px] md:min-h-[600px] w-full aspect-video max-w-full mx-auto shadow-inner text-center">
-                      <gameDetails.icon className="h-24 w-24 text-primary mb-6" />
-                      <h3 className="text-3xl font-bold font-headline text-primary mb-4">Ready for {gameDetails.name}?</h3>
-                      <p className="text-muted-foreground mb-6 max-w-md">
-                          Make sure you've entered your X Username and K-Pop Group above.
-                          Then, click Start Game to begin! Use <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Spacebar</kbd> or tap/click the screen to shoot.
-                      </p>
-                      <Button onClick={handleStartGameClick} size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold">
-                          <Play className="mr-2 h-6 w-6" /> Start Game
-                      </Button>
-                       <Alert variant="default" className="mt-6 max-w-md text-left bg-primary/5 text-primary border-primary/20">
-                          <Info className="h-5 w-5 !text-primary" />
-                          <AlertTitle className="font-semibold">AdMob Ads</AlertTitle>
-                          <AlertDescription>
-                              This game attempts to use AdMob rewarded ads if you run out of arrows. Ad functionality depends on proper AdMob SDK setup and ad availability.
-                          </AlertDescription>
-                      </Alert>
-                  </div>
-              )}
 
               {/* Canvas Container: Show if not in pre-game (i.e., game active or game just ended pre-submission) */}
-              <div className={`bg-muted rounded-lg flex flex-col items-center justify-center p-1 min-h-[400px] md:min-h-[600px] w-full aspect-video max-w-full mx-auto shadow-inner ${isPreGame ? 'hidden' : ''}`}>
-                <canvas ref={canvasRef} id="gameCanvas" className="border border-input rounded-lg w-full h-full max-w-full max-h-full"></canvas>
-              </div>
-              <div id="gameUIMessages" className="text-center mt-4">
-                {/* Messages from game.js could be injected here if needed, though callbacks are preferred */}
-              </div>
+              {isPreGame ? (
+                <div className="bg-muted rounded-lg flex flex-col items-center justify-center p-6 min-h-[400px] md:min-h-[600px] w-full aspect-video max-w-full mx-auto shadow-inner text-center">
+                           <gameDetails.icon className="h-24 w-24 text-primary mb-6" />
+                           <h3 className="text-3xl font-bold font-headline text-primary mb-4">Ready for {gameDetails.name}?</h3>
+                           <p className="text-muted-foreground mb-6 max-w-md">
+                               Make sure you've entered your X Username and K-Pop Group above.
+                               Then, click Start Game to begin! Use <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Spacebar</kbd> or tap/click the screen to shoot.
+                           </p>
+                           <Button onClick={handleStartGameClick} size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold">
+                               <Play className="mr-2 h-6 w-6" /> Start Game
+                           </Button>
+                            <Alert variant="default" className="mt-6 max-w-md text-left bg-primary/5 text-primary border-primary/20">
+                               <Info className="h-5 w-5 !text-primary" />
+                               <AlertTitle className="font-semibold">AdMob Ads</AlertTitle>
+                               <AlertDescription>
+                                   This game may display non-personalized ads from Google AdMob. By playing, you consent to this.
+                               </AlertDescription>
+                           </Alert>
+                </div>
+              ) : (
+                <div className={`bg-muted rounded-lg flex flex-col items-center justify-center p-1 min-h-[400px] md:min-h-[600px] w-full aspect-video max-w-full mx-auto shadow-inner`}>
+                  <canvas ref={canvasRef} id="gameCanvas" className="border border-input rounded-lg w-full h-full max-w-full max-h-full"></canvas>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

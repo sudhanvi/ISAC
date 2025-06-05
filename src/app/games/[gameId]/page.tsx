@@ -66,6 +66,7 @@ export default function MiniGamePage() {
   }, []);
 
   const handleGameOver = useCallback((finalScore: number, isNewBest: boolean) => {
+    console.log("React: handleGameOver called with score", finalScore, "isNewBest", isNewBest);
     setIsGameActive(false);
     setManualScore(finalScore);
     toast({
@@ -76,6 +77,8 @@ export default function MiniGamePage() {
   }, [toast]);
   
   const isGameEffectivelyActive = useCallback(() => {
+    // This callback is passed to the game instance to check if React considers the game active.
+    // This helps with event listeners in game.js (e.g., spacebar only when game is truly active)
     return isGameActive;
   }, [isGameActive]);
 
@@ -88,33 +91,41 @@ export default function MiniGamePage() {
 
   const initializeAndStartGame = useCallback(() => {
     if (canvasRef.current && !gameInstanceRef.current) {
-      console.log("Initializing KpopArcheryGame instance via initializeAndStartGame");
+      console.log("React: Initializing KpopArcheryGame instance via initializeAndStartGame.");
       const personalBest = parseInt(localStorage.getItem(`bestScore_${gameId}`) || '0');
       gameInstanceRef.current = new KpopArcheryGame(canvasRef.current, gameOptions);
       gameInstanceRef.current.start(personalBest);
     } else if (gameInstanceRef.current && !isGameActive) {
-      console.log("Restarting existing KpopArcheryGame instance.");
+      // This case handles if the game instance exists but isn't active (e.g., after game over, before submission)
+      // And somehow we are trying to start again. Typically, a new instance is preferred after "Play Again".
+      console.log("React: Attempting to restart existing KpopArcheryGame instance.");
       const personalBest = parseInt(localStorage.getItem(`bestScore_${gameId}`) || '0');
-      gameInstanceRef.current.start(personalBest);
+      gameInstanceRef.current.start(personalBest); // Restart the existing instance
     }
-  }, [gameOptions, gameId, isGameActive]); // isGameActive added as it affects restart logic
+  }, [gameOptions, gameId, isGameActive]); // isGameActive is a dependency.
 
  useEffect(() => {
+    // This effect manages the game's lifecycle based on React state
     if (!isPreGame && isGameActive) {
-      console.log("Effect: Conditions met to initialize and start game.");
+      // Condition to run the game
+      console.log("React Effect: Conditions met to initialize and start game (isPreGame=false, isGameActive=true).");
       initializeAndStartGame();
     }
 
     return () => {
+      // Cleanup for this effect
       if (gameInstanceRef.current && !isGameActive) { 
-        console.log("Effect Cleanup: Destroying KpopArcheryGame instance because isGameActive became false or component unmounting.");
+        // If the game instance exists and the game is no longer active (e.g., game over, or "Play Again" clicked)
+        console.log("React Effect Cleanup: Destroying KpopArcheryGame instance because isGameActive became false OR component unmounting.");
         gameInstanceRef.current.destroy();
         gameInstanceRef.current = null;
       }
     };
   }, [isPreGame, isGameActive, initializeAndStartGame]);
 
+
   const handleStartGameClick = () => {
+    console.log("React: handleStartGameClick triggered.");
     const finalGroup = newGroup.trim() || selectedGroup;
     if (!username.trim()) {
       toast({ title: "Details Needed", description: "Please enter your X username before starting.", variant: "destructive" });
@@ -126,23 +137,25 @@ export default function MiniGamePage() {
     }
 
     if (gameInstanceRef.current) {
-        console.log("handleStartGameClick: Destroying existing game instance before starting new one.");
+        // If for some reason an old instance exists, destroy it.
+        console.log("React: handleStartGameClick - Destroying existing game instance before starting new one.");
         gameInstanceRef.current.destroy();
         gameInstanceRef.current = null;
     }
 
-    setIsPreGame(false);
-    setIsGameActive(true);
-    setSubmittedScoreDetails(null); 
-    setGameScore(0); 
-    setArrowsLeft(10); 
-    console.log("handleStartGameClick: Set isPreGame=false, isGameActive=true. Game should start via useEffect.");
+    setIsPreGame(false); // Transition out of pre-game state
+    setIsGameActive(true); // Activate the game
+    setSubmittedScoreDetails(null); // Clear any previous submission details for this session
+    setGameScore(0); // Reset visual game score
+    setArrowsLeft(10); // Reset visual arrows
+    console.log("React: handleStartGameClick - Set isPreGame=false, isGameActive=true. Game should start via useEffect.");
   };
 
+  // Effect for component unmount cleanup
   useEffect(() => {
     return () => {
       if (gameInstanceRef.current) {
-        console.log("Component Unmount: Destroying KpopArcheryGame instance.");
+        console.log("React Component Unmount: Destroying KpopArcheryGame instance.");
         gameInstanceRef.current.destroy();
         gameInstanceRef.current = null;
       }
@@ -164,6 +177,7 @@ export default function MiniGamePage() {
   }
 
   const handleScoreSubmit = () => {
+    console.log("React: handleScoreSubmit triggered.");
     const finalGroup = newGroup.trim() || selectedGroup;
     if (!username.trim()) {
       toast({ title: "Validation Error", description: "Please enter your X username.", variant: "destructive" });
@@ -182,11 +196,13 @@ export default function MiniGamePage() {
     const currentBest = parseInt(localStorage.getItem(`bestScore_${gameId}`) || '0');
     if (numericScore > currentBest) {
         localStorage.setItem(`bestScore_${gameId}`, numericScore.toString());
+        console.log(`React: New personal best for ${gameId} saved: ${numericScore}`);
     }
 
     addScoreToLeaderboard({ username: username.trim(), group: finalGroup, gameId, score: numericScore });
-    if (progressContext && !progressContext.isGameCompleted(gameId)) { // check before completing
+    if (progressContext && !progressContext.isGameCompleted(gameId)) {
       progressContext.completeGame(gameId);
+      console.log(`React: Game ${gameId} marked as completed in context.`);
     }
     
     localStorage.setItem('isacStudioUsername', username.trim());
@@ -194,18 +210,37 @@ export default function MiniGamePage() {
 
     setSubmittedScoreDetails({ score: numericScore, username: username.trim(), group: finalGroup });
     toast({ title: "Score Submitted!", description: `Your score of ${numericScore} for ${gameDetails.name} has been recorded.`, className: "bg-green-500 text-white" });
+    
+    // After submitting, transition to a state where they see the "Play Again" option.
+    // isGameActive is already false (set by handleGameOver).
+    // Setting isPreGame to true here will show the results screen which contains "Play Again".
     setIsPreGame(true); 
+    console.log("React: handleScoreSubmit - Score submitted, set isPreGame=true to show results/play again options.");
   };
 
   const handlePlayAgain = () => {
-    setSubmittedScoreDetails(null);
-    setManualScore('');
-    setIsGameActive(false); 
-    setIsPreGame(true);
-    console.log("handlePlayAgain: Set isPreGame=true, isGameActive=false. Forms should re-appear.");
+    console.log("React: handlePlayAgain triggered.");
+    // Explicitly destroy the game instance if it exists
+    if (gameInstanceRef.current) {
+        console.log("React: handlePlayAgain - Destroying active game instance.");
+        gameInstanceRef.current.destroy();
+        gameInstanceRef.current = null;
+    }
+
+    setSubmittedScoreDetails(null); // Clear submission details from the current session
+    setManualScore(''); // Clear the manual score input
+    
+    // Reset game state variables for the React UI
+    setGameScore(0);
+    setArrowsLeft(10);
+
+    // Critical state changes to go back to the pre-game form
+    setIsGameActive(false); // Ensure game is not considered active
+    setIsPreGame(true);    // THIS IS KEY: Go back to pre-game state to show forms
+
+    console.log("React: handlePlayAgain - States reset. isPreGame=true, isGameActive=false. Player forms should re-appear.");
   };
   
-  // Determine if we should show the results screen (either score submitted this session, or game previously completed and not in pre-game mode from "Play Again")
   const showResultsScreen = submittedScoreDetails || (gameCompleted && !isPreGame);
 
   return (
@@ -265,7 +300,7 @@ export default function MiniGamePage() {
           ) : (
             // Game Play Area (Details, Start, In-Game, Submission)
             <div className="space-y-6">
-              {/* Player Details Form: Show if pre-game, OR if game ended and score not yet submitted (to allow filling details) */}
+              {/* Player Details Form: Show if pre-game, OR if game ended (isGameActive=false, isPreGame=false) and score not yet submitted */}
               {(isPreGame || (!isGameActive && !isPreGame && !submittedScoreDetails)) && (
                 <Card className="p-6 bg-muted/50">
                   <CardTitle className="text-xl mb-4 font-headline text-primary">Player Details</CardTitle>
@@ -303,7 +338,7 @@ export default function MiniGamePage() {
                   </div>
               )}
 
-              {/* Score Submission Form: Show if game ended, canvas hidden, score not submitted */}
+              {/* Score Submission Form: Show if game ended (!isGameActive), not in pre-game (!isPreGame), and score not submitted (!submittedScoreDetails) */}
               {!isPreGame && !isGameActive && !submittedScoreDetails && ( 
                 <Card className="p-6 bg-muted/50">
                   <CardTitle className="text-xl mb-4 font-headline text-primary">Submit Your Score</CardTitle>
@@ -350,6 +385,7 @@ export default function MiniGamePage() {
                 <canvas ref={canvasRef} id="gameCanvas" className="border border-input rounded-lg w-full h-full max-w-full max-h-full"></canvas>
               </div>
               <div id="gameUIMessages" className="text-center mt-4">
+                {/* Messages from game.js could be injected here if needed, though callbacks are preferred */}
               </div>
             </div>
           )}

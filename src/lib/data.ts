@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { Target, Medal, Zap, Puzzle, Brain, Mic2, Gamepad2, Wand2, Run } from 'lucide-react';
+import { Target, Medal, Zap, Puzzle, Brain, Mic2, Gamepad2, Wand2, Footprints } from 'lucide-react';
 
 export type MiniGamePerformance = "Excellent" | "Good" | "Average" | "Poor";
 
@@ -38,7 +38,7 @@ export const miniGames: MiniGame[] = [
     id: 'sprint-challenge', 
     name: 'Sprint Challenge', 
     description: 'Race against the clock and be the fastest on the track!', 
-    icon: Run, 
+    icon: Footprints, 
     href: '/games/sprint-challenge',
     imagePlaceholder: 'https://placehold.co/600x400.png',
     aiHint: 'running track'

@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { KpopArcheryGame } from '@/lib/game';
 import Image from 'next/image';
+import AdSenseUnit from '@/components/AdSenseUnit';
 
 
 export default function MiniGamePage() {
@@ -113,7 +114,7 @@ export default function MiniGamePage() {
       const personalBest = parseInt(localStorage.getItem(`bestScore_${gameId}`) || '0');
       gameInstanceRef.current.start(personalBest);
     }
-  }, [gameOptions, gameId, isGameActive]); // Added isGameActive to dependencies
+  }, [gameOptions, gameId, isGameActive]); 
 
  useEffect(() => {
     console.log(`React Effect: isPreGame=${isPreGame}, isGameActive=${isGameActive}`);
@@ -122,8 +123,6 @@ export default function MiniGamePage() {
       initializeAndStartGame();
     }
 
-    // Cleanup logic:
-    // Destroy game if it's no longer active OR if we go back to pregame OR if component is unmounting
     return () => {
       if (gameInstanceRef.current && (!isGameActive || isPreGame)) {
         console.log("React Effect Cleanup: Destroying KpopArcheryGame instance because isGameActive became false OR isPreGame became true OR component unmounting.");
@@ -131,7 +130,7 @@ export default function MiniGamePage() {
         gameInstanceRef.current = null;
       }
     };
-  }, [isPreGame, isGameActive, initializeAndStartGame]); // initializeAndStartGame is stable due to useMemo on gameOptions
+  }, [isPreGame, isGameActive, initializeAndStartGame]); 
 
 
   const handleStartGameClick = () => {
@@ -165,7 +164,6 @@ export default function MiniGamePage() {
   };
 
   useEffect(() => {
-    // Component unmount cleanup
     return () => {
       if (gameInstanceRef.current) {
         console.log("React Component Unmount: Destroying KpopArcheryGame instance.");
@@ -329,7 +327,6 @@ export default function MiniGamePage() {
                 <Button onClick={handleStartGameClick} size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold">
                   <Play className="mr-2 h-6 w-6" /> Start Game
                 </Button>
-                 {/* AdMob alert removed as AdMob logic is removed from game.js for web context */}
               </div>
             </div>
           ) : isGameActive ? (
@@ -374,6 +371,29 @@ export default function MiniGamePage() {
           )}
         </CardContent>
       </Card>
+
+      {isClient && !isPreGame && !isGameActive && !submittedScoreDetails && (
+         <div className="my-8 text-center">
+           <p className="mb-4 text-sm text-muted-foreground">Advertisement</p>
+            <AdSenseUnit
+              adClient="ca-pub-6305491227155574"
+              adSlot="6193979423"
+              className="inline-block" 
+            />
+        </div>
+      )}
+       {isClient && isPreGame && (
+         <div className="my-8 text-center">
+           <p className="mb-4 text-sm text-muted-foreground">Advertisement</p>
+            <AdSenseUnit
+              adClient="ca-pub-6305491227155574"
+              adSlot="6193979423"
+              className="inline-block"
+            />
+        </div>
+      )}
+
+
     </div>
   );
 }

@@ -31,7 +31,6 @@ export default function MiniGamePage() {
 
   useEffect(() => {
     setIsClient(true);
-    // Load username from localStorage if available
     const storedUsername = localStorage.getItem('isacStudioUsername');
     if (storedUsername) setUsername(storedUsername);
     const storedGroup = localStorage.getItem('isacStudioGroup');
@@ -82,21 +81,16 @@ export default function MiniGamePage() {
       progressContext.completeGame(gameId);
     }
     
-    // Save username and group for next time
     localStorage.setItem('isacStudioUsername', username.trim());
     localStorage.setItem('isacStudioGroup', finalGroup);
 
     setSubmittedScoreDetails({ score: numericScore, username: username.trim(), group: finalGroup });
     toast({ title: "Score Submitted!", description: `Your score of ${numericScore} for ${game.name} has been recorded.`, className: "bg-green-500 text-white" });
-    
-    // Optionally reset form fields here if desired, or keep them for resubmission
-    // setScore(''); 
   };
 
   const handlePlayAgain = () => {
     setSubmittedScoreDetails(null);
     setScore('');
-    // Keep username and group pre-filled
   };
   
   const displayGroup = newGroup.trim() || selectedGroup;
@@ -141,7 +135,7 @@ export default function MiniGamePage() {
                   </div>
                   <div>
                     <Label htmlFor="groupSelect" className="text-foreground/80">Select Your K-pop Group</Label>
-                    <Select value={selectedGroup} onValueChange={setSelectedGroup}>
+                    <Select value={selectedGroup} onValueChange={(value) => { setSelectedGroup(value); setNewGroup(''); }}>
                       <SelectTrigger id="groupSelect" className="mt-1">
                         <SelectValue placeholder="-- Select Your Group --" />
                       </SelectTrigger>
@@ -154,11 +148,11 @@ export default function MiniGamePage() {
                   </div>
                   <div>
                     <Label htmlFor="newGroup" className="text-foreground/80">Or Enter New Group Name</Label>
-                    <Input id="newGroup" value={newGroup} onChange={(e) => setNewGroup(e.target.value)} placeholder="If not in list or for sub-units" className="mt-1"/>
+                    <Input id="newGroup" value={newGroup} onChange={(e) => { setNewGroup(e.target.value); if (e.target.value) setSelectedGroup(''); }} placeholder="If not in list or for sub-units" className="mt-1"/>
                   </div>
                   <div>
-                    <Label htmlFor="score" className="text-foreground/80">Your Score</Label>
-                    <Input id="score" type="number" value={score} onChange={(e) => setScore(e.target.value === '' ? '' : Number(e.target.value))} placeholder="Enter score" className="mt-1"/>
+                    <Label htmlFor="score" className="text-foreground/80">Your Score (from the game)</Label>
+                    <Input id="score" type="number" value={score} onChange={(e) => setScore(e.target.value === '' ? '' : Number(e.target.value))} placeholder="Enter score from game" className="mt-1"/>
                   </div>
                   <Button
                     onClick={handleScoreSubmit}
@@ -199,12 +193,24 @@ export default function MiniGamePage() {
             )}
 
             <h2 className="text-2xl font-semibold font-headline text-primary mt-8">Game Arena</h2>
-            <div className="aspect-video bg-muted rounded-lg flex items-center justify-center p-4">
-              <p className="text-muted-foreground text-center">
-                This is the interactive area for {game.name}.<br />
-                Imagine exciting gameplay happening here!
-                <span role="img" aria-label="Sparkles" className="ml-1">✨</span>
+            <div className="bg-muted rounded-lg flex flex-col items-center justify-center p-4 min-h-[400px] md:min-h-[600px] w-full aspect-[4/3] max-w-full mx-auto shadow-inner">
+              {/* 
+                The canvas for the Archery game would go here.
+                Your KpopArcheryGame class from game.js would be initialized
+                and would draw onto this canvas.
+                Example: <canvas id="gameCanvas" className="w-full h-full rounded-md"></canvas>
+                Actual integration requires adapting game.js to React's lifecycle.
+              */}
+              <canvas id="gameCanvas" className="border border-input rounded-lg w-full h-full max-w-full max-h-full"></canvas>
+              <p className="text-sm text-muted-foreground mt-2">
+                Note: The interactive game logic from your <code>game.js</code> is not yet connected to this canvas.
               </p>
+            </div>
+            <div id="gameUIMessages" className="text-center mt-4">
+              {/* Your game.js might try to update elements like these: */}
+              {/* <div id="score">SCORE: 0</div> */}
+              {/* <div id="arrowsLeft">ARROWS: 10</div> */}
+              {/* In React, these would typically be driven by component state updated via callbacks from the game logic. */}
             </div>
           </div>
         </CardContent>
@@ -212,5 +218,3 @@ export default function MiniGamePage() {
     </div>
   );
 }
-
-    

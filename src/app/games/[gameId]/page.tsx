@@ -158,10 +158,9 @@ export default function MiniGamePage() {
       toast({ title: "Details Needed", description: "Please select or enter your K-pop group before starting.", variant: "destructive" });
       return;
     }
-    if (!canvasRef.current || !canvasRef.current.parentElement) {
-      toast({ title: "Game Error", description: "Canvas not ready. Please try refreshing.", variant: "destructive" });
-      return;
-    }
+    // The check for canvasRef.current and canvasRef.current.parentElement was removed from here
+    // as it was causing a premature "Canvas not ready" error.
+    // The useEffect hook that calls initializeAndStartGame already handles canvas readiness.
 
     if (gameInstanceRef.current) {
         gameInstanceRef.current.destroy();
@@ -242,7 +241,6 @@ export default function MiniGamePage() {
       toast({ title: "Score Submitted!", description: `Your score of ${numericScore} for ${gameDetails.name} has been recorded for the global leaderboards.`, className: "bg-green-500 text-white" });
     } catch (error: any) {
       console.error("Failed to submit score:", error);
-      // Check if the error object has a message property, common for Error instances
       const errorMessage = error.message || "Could not submit score to the server. Please try again or check server logs if the issue persists.";
       toast({ title: "Submission Error", description: errorMessage, variant: "destructive", duration: 7000 });
     } finally {

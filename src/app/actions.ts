@@ -13,14 +13,22 @@ function initializeFirebaseAdmin() {
   if (!getApps().length) {
     console.log('actions.ts: No Firebase Admin apps initialized. Attempting initialization...');
     try {
-      if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING) {
+      const serviceAccountJsonString = process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING;
+      if (serviceAccountJsonString) {
         console.log('actions.ts: FIREBASE_SERVICE_ACCOUNT_JSON_STRING found. Attempting to parse and initialize.');
-        console.log('actions.ts: Snippet of FIREBASE_SERVICE_ACCOUNT_JSON_STRING (first 50 chars, last 50 chars):', process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING.substring(0,50), '...', process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING.slice(-50));
-        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING);
-        adminApp = initializeApp({
-          credential: cert(serviceAccount),
-        });
-        console.log('actions.ts: Firebase Admin SDK initialized successfully using service account JSON string.');
+        // Log a snippet to help verify if it's loaded, but be careful not to log the whole key.
+        console.log('actions.ts: Snippet of FIREBASE_SERVICE_ACCOUNT_JSON_STRING (first 50 chars, last 50 chars):', serviceAccountJsonString.substring(0,50), '...', serviceAccountJsonString.slice(-50));
+        try {
+          const serviceAccount = JSON.parse(serviceAccountJsonString);
+          adminApp = initializeApp({
+            credential: cert(serviceAccount),
+          });
+          console.log('actions.ts: Firebase Admin SDK initialized successfully using service account JSON string.');
+        } catch (parseError: any) {
+          console.error('actions.ts: CRITICAL ERROR parsing FIREBASE_SERVICE_ACCOUNT_JSON_STRING:', parseError.message, parseError.stack);
+          console.error('actions.ts: Ensure the content of the secret is a valid JSON service account key.');
+          adminApp = undefined; // Explicitly set to undefined on parse error
+        }
       } else if (process.env.NODE_ENV === 'development' && process.env.GOOGLE_APPLICATION_CREDENTIALS) {
         console.log('actions.ts: NODE_ENV is development and GOOGLE_APPLICATION_CREDENTIALS found:', process.env.GOOGLE_APPLICATION_CREDENTIALS, '. Initializing with ADC for local dev.');
         adminApp = initializeApp();
@@ -31,10 +39,10 @@ function initializeFirebaseAdmin() {
         console.log('actions.ts: Firebase Admin SDK initialized successfully using Application Default Credentials (e.g., from App Hosting environment).');
       }
     } catch (error: any) {
-      console.error('actions.ts: CRITICAL ERROR during Firebase Admin SDK initializeApp:', error.message, error.stack);
-      if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING) {
-        console.error('actions.ts: Error occurred while using FIREBASE_SERVICE_ACCOUNT_JSON_STRING. Ensure its content is a valid JSON service account key.');
-      } else {
+      console.error('actions.ts: CRITICAL ERROR during Firebase Admin SDK initializeApp (outer try-catch):', error.message, error.stack);
+      if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING && !adminApp) { // Check if JSON string was present but initialization failed
+        console.error('actions.ts: Error occurred while attempting to use FIREBASE_SERVICE_ACCOUNT_JSON_STRING.');
+      } else if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING) {
         console.error('actions.ts: Error occurred during default ADC initialization or local dev ADC. Ensure the runtime service account has permissions or GOOGLE_APPLICATION_CREDENTIALS is set correctly for local dev.');
       }
       adminApp = undefined;
@@ -99,7 +107,7 @@ export async function addScoreToLeaderboardAction(payload: AddScorePayload): Pro
   } catch (error: any) {
     console.error('Error in addScoreToLeaderboardAction adding to Firestore. Details:', error.message, error.stack, 'About to throw a new error to the client.');
     // This refined error message will be shown in the client toast and Next.js dev overlay.
-    throw new Error('Failed to submit score. Server-side error interacting with database. Check server logs for detailed Firestore/Admin SDK errors.');
+    throw new Error('Failed to submit score. THIS IS LIKELY A SERVER CONFIGURATION ISSUE (e.g., Firestore not enabled, or problems with secrets/permissions). Check server logs for the root cause from Firebase/Firestore.');
   }
 }
 

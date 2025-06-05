@@ -2,32 +2,66 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { getPlayerLeaderboard, getGroupLeaderboard, PlayerLeaderboardItem, GroupLeaderboardItem, fanbaseMap } from '@/lib/data';
+import { PlayerLeaderboardItem, GroupLeaderboardItem } from '@/lib/data';
+import { getPlayerLeaderboardAction, getGroupLeaderboardAction } from '@/app/actions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { ArrowLeft, Users, Award } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function LeaderboardPage() {
   const [playerLeaderboard, setPlayerLeaderboard] = useState<PlayerLeaderboardItem[]>([]);
   const [groupLeaderboard, setGroupLeaderboard] = useState<GroupLeaderboardItem[]>([]);
-  const [isClient, setIsClient] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setIsClient(true);
-    if (typeof window !== 'undefined') {
-      setPlayerLeaderboard(getPlayerLeaderboard(10));
-      setGroupLeaderboard(getGroupLeaderboard(10));
+    async function fetchLeaderboards() {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const [players, groups] = await Promise.all([
+          getPlayerLeaderboardAction(10),
+          getGroupLeaderboardAction(10),
+        ]);
+        setPlayerLeaderboard(players);
+        setGroupLeaderboard(groups);
+      } catch (err) {
+        console.error("Failed to fetch leaderboards:", err);
+        setError("Could not load leaderboard data. Please try again later.");
+        setPlayerLeaderboard([]);
+        setGroupLeaderboard([]);
+      } finally {
+        setIsLoading(false);
+      }
     }
+    fetchLeaderboards();
   }, []);
 
-  if (!isClient) {
-    // Optional: Render a loading state or null during SSR/pre-hydration
-    return (
-      <div className="space-y-8">
-        <h1 className="text-4xl font-bold text-center font-headline text-primary">Leaderboards</h1>
-        <p className="text-xl text-center text-foreground/80">Loading leaderboard data...</p>
+  const renderSkeletons = (count: number, type: 'player' | 'group') => (
+    Array.from({ length: count }).map((_, index) => (
+      <TableRow key={`skeleton-${type}-${index}`}>
+        <TableCell><Skeleton className="h-5 w-10 rounded" /></TableCell>
+        <TableCell><Skeleton className="h-5 w-32 rounded" /></TableCell>
+        <TableCell className="text-right"><Skeleton className="h-5 w-16 rounded ml-auto" /></TableCell>
+        <TableCell className="text-right"><Skeleton className="h-5 w-24 rounded ml-auto" /></TableCell>
+      </TableRow>
+    ))
+  );
+
+  if (error) {
+     return (
+      <div className="space-y-8 text-center">
+        <Button variant="outline" asChild className="mb-6 group absolute top-8 left-8">
+          <Link href="/">
+            <ArrowLeft className="mr-2 h-4 w-4 transition-transform group-hover:-translate-x-1" />
+            Back to Home
+          </Link>
+        </Button>
+        <h1 className="text-4xl font-bold font-headline text-primary pt-20">Leaderboards</h1>
+        <p className="text-xl text-destructive">{error}</p>
       </div>
     );
   }
@@ -41,10 +75,10 @@ export default function LeaderboardPage() {
         </Link>
       </Button>
       <h1 className="text-4xl font-bold text-center font-headline text-primary">
-        ISAC Studio Leaderboards
+        ISAC Studio Global Leaderboards
       </h1>
       <p className="text-xl text-center text-foreground/80">
-        See who's topping the charts!
+        See who's topping the charts! (Backend database connection required for full functionality)
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -56,7 +90,21 @@ export default function LeaderboardPage() {
             <CardDescription>Individual player rankings based on total scores.</CardDescription>
           </CardHeader>
           <CardContent>
-            {playerLeaderboard.length > 0 ? (
+            {isLoading ? (
+               <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[50px]">Rank</TableHead>
+                    <TableHead>Player (X Username)</TableHead>
+                    <TableHead className="text-right">Total Score</TableHead>
+                    <TableHead className="text-right">Highest Single Game</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {renderSkeletons(5, 'player')}
+                </TableBody>
+              </Table>
+            ) : playerLeaderboard.length > 0 ? (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -91,7 +139,21 @@ export default function LeaderboardPage() {
             <CardDescription>Group rankings based on cumulative scores by their fans.</CardDescription>
           </CardHeader>
           <CardContent>
-            {groupLeaderboard.length > 0 ? (
+             {isLoading ? (
+               <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[50px]">Rank</TableHead>
+                    <TableHead>Group (Fandom)</TableHead>
+                    <TableHead className="text-right">Total Score</TableHead>
+                    <TableHead className="text-right">Top Fan Score</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {renderSkeletons(5, 'group')}
+                </TableBody>
+              </Table>
+            ) : groupLeaderboard.length > 0 ? (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -124,5 +186,3 @@ export default function LeaderboardPage() {
     </div>
   );
 }
-
-    

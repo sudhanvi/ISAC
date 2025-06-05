@@ -2,7 +2,8 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { miniGames, kpopGroups, addScoreToLeaderboard, fanbaseMap } from '@/lib/data';
+import { miniGames, kpopGroups, fanbaseMap } from '@/lib/data';
+import { addScoreToLeaderboardAction, AddScorePayload } from '@/app/actions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -39,6 +40,7 @@ export default function MiniGamePage() {
   const [arrowsLeft, setArrowsLeft] = useState(10);
 
   const [isGameActive, setIsGameActive] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedScoreDetails, setSubmittedScoreDetails] = useState<{ score: number; username: string; group: string } | null>(null);
   const [isPreGame, setIsPreGame] = useState(true);
   const [showRotatePrompt, setShowRotatePrompt] = useState(false);
@@ -194,7 +196,7 @@ export default function MiniGamePage() {
     );
   }
 
-  const handleScoreSubmit = () => {
+  const handleScoreSubmit = async () => {
     const finalUsername = username.trim();
     const finalGroup = newGroup.trim() || selectedGroup;
 
@@ -212,17 +214,32 @@ export default function MiniGamePage() {
     }
 
     const numericScore = Number(manualScore);
+    setIsSubmitting(true);
 
-    addScoreToLeaderboard({ username: finalUsername, group: finalGroup, gameId, score: numericScore });
-    if (progressContext && !progressContext.isGameCompleted(gameId)) {
-      progressContext.completeGame(gameId);
+    try {
+      const payload: AddScorePayload = {
+        username: finalUsername,
+        group: finalGroup,
+        gameId,
+        score: numericScore,
+      };
+      await addScoreToLeaderboardAction(payload);
+
+      if (progressContext && !progressContext.isGameCompleted(gameId)) {
+        progressContext.completeGame(gameId);
+      }
+      
+      localStorage.setItem('isacStudioUsername', finalUsername);
+      localStorage.setItem('isacStudioGroup', finalGroup);
+
+      setSubmittedScoreDetails({ score: numericScore, username: finalUsername, group: finalGroup });
+      toast({ title: "Score Submitted!", description: `Your score of ${numericScore} for ${gameDetails.name} has been recorded for the global leaderboards. (Backend storage pending user setup)`, className: "bg-green-500 text-white" });
+    } catch (error) {
+      console.error("Failed to submit score:", error);
+      toast({ title: "Submission Error", description: "Could not submit score to the server. Please try again.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
     }
-    
-    localStorage.setItem('isacStudioUsername', finalUsername);
-    localStorage.setItem('isacStudioGroup', finalGroup);
-
-    setSubmittedScoreDetails({ score: numericScore, username: finalUsername, group: finalGroup });
-    toast({ title: "Score Submitted!", description: `Your score of ${numericScore} for ${gameDetails.name} has been recorded for the leaderboards.`, className: "bg-green-500 text-white" });
   };
 
   const handlePlayAgain = () => {
@@ -243,7 +260,7 @@ export default function MiniGamePage() {
   return (
     <div className="space-y-8 relative">
       {showRotatePrompt && <RotateDevicePrompt />}
-      <div className={showRotatePrompt ? 'opacity-20 pointer-events-none' : ''}> {/* Dim and disable interaction if prompt shown */}
+      <div className={showRotatePrompt ? 'opacity-20 pointer-events-none' : ''}>
         <Button variant="outline" asChild className="mb-6 group">
           <Link href="/">
             <ArrowLeft className="mr-2 h-4 w-4 transition-transform group-hover:-translate-x-1" />
@@ -282,10 +299,10 @@ export default function MiniGamePage() {
                 <p className="text-3xl font-bold text-accent my-3">{submittedScoreDetails.score} points</p>
                 <p className="text-muted-foreground text-sm mt-2">Thank you for participating!</p>
                 <div className="mt-4 space-x-3">
-                  <Button onClick={handlePlayAgain} variant="outline">
+                  <Button onClick={handlePlayAgain} variant="outline" disabled={isSubmitting}>
                       Play Again
                   </Button>
-                  <Button asChild>
+                  <Button asChild disabled={isSubmitting}>
                     <Link href="/leaderboard">View Leaderboards</Link>
                   </Button>
                 </div>
@@ -322,7 +339,6 @@ export default function MiniGamePage() {
                   <gameDetails.icon className="h-24 w-24 text-primary mb-6" />
                   <h3 className="text-3xl font-bold font-headline text-primary mb-4">Ready for {gameDetails.name}?</h3>
                   <p className="text-muted-foreground mb-6 max-w-md">
-                    You start with 10 arrows. Hit a bullseye (9-10 points) for +2 bonus arrows!
                     Make sure you've entered your X Username and K-Pop Group above.
                     Then, click Start Game to begin. Use <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Spacebar</kbd> or tap/click the screen to shoot.
                   </p>
@@ -359,13 +375,14 @@ export default function MiniGamePage() {
                         onClick={handleScoreSubmit}
                         size="lg"
                         className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground font-semibold"
+                        disabled={isSubmitting}
                       >
-                        <Trophy className="mr-2 h-5 w-5" /> Submit Score
+                        {isSubmitting ? 'Submitting...' : <><Trophy className="mr-2 h-5 w-5" /> Submit Score</>}
                       </Button>
                     </div>
                   </Card>
                   <div className="text-center mt-4">
-                      <Button onClick={handlePlayAgain} variant="outline">
+                      <Button onClick={handlePlayAgain} variant="outline" disabled={isSubmitting}>
                           Or Play Again Without Submitting
                       </Button>
                   </div>

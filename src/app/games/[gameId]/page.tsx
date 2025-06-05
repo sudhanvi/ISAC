@@ -167,7 +167,7 @@ export default function MiniGamePage() {
     setIsGameActive(true);
     setSubmittedScoreDetails(null);
     setGameScore(0);
-    setArrowsLeft(10);
+    setArrowsLeft(10); // Initialize with starting arrows
     setManualScore('');
   };
 
@@ -234,7 +234,7 @@ export default function MiniGamePage() {
     setSubmittedScoreDetails(null);
     setManualScore('');
     setGameScore(0);
-    setArrowsLeft(10);
+    setArrowsLeft(10); // Reset arrows for new game
     setIsGameActive(false);
     setIsPreGame(true);
   };
@@ -322,8 +322,9 @@ export default function MiniGamePage() {
                   <gameDetails.icon className="h-24 w-24 text-primary mb-6" />
                   <h3 className="text-3xl font-bold font-headline text-primary mb-4">Ready for {gameDetails.name}?</h3>
                   <p className="text-muted-foreground mb-6 max-w-md">
+                    You start with 10 arrows. Hit a bullseye (9-10 points) for +2 bonus arrows!
                     Make sure you've entered your X Username and K-Pop Group above.
-                    Then, click Start Game to begin! Use <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Spacebar</kbd> or tap/click the screen to shoot.
+                    Then, click Start Game to begin. Use <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Spacebar</kbd> or tap/click the screen to shoot.
                   </p>
                   <Button onClick={handleStartGameClick} size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold">
                     <Play className="mr-2 h-6 w-6" /> Start Game

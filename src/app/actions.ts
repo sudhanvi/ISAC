@@ -31,25 +31,23 @@ function initializeFirebaseAdmin() {
       }
     } catch (error: any) {
       console.error('actions.ts: CRITICAL ERROR during Firebase Admin SDK initializeApp:', error.message, error.stack);
-      // If FIREBASE_SERVICE_ACCOUNT_JSON_STRING was present, log a snippet for debugging (be careful with logging secrets)
       if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING) {
         console.error('actions.ts: Snippet of FIREBASE_SERVICE_ACCOUNT_JSON_STRING (first 50 chars):', process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING.substring(0,50));
       }
-      // Explicitly do not proceed to getFirestore if app initialization failed
-      adminApp = undefined; // Ensure app is marked as uninitialized
+      adminApp = undefined; 
     }
   } else {
     adminApp = getApps()[0];
     console.log('actions.ts: Firebase Admin app already initialized.');
   }
 
-  if (adminApp && !db) { // Only try to get Firestore if app was initialized
+  if (adminApp && !db) { 
     try {
       db = getFirestore(adminApp);
       console.log('actions.ts: Firestore instance obtained successfully.');
     } catch (error: any) {
       console.error('actions.ts: CRITICAL ERROR obtaining Firestore instance:', error.message, error.stack);
-      db = undefined; // Ensure db is marked as uninitialized
+      db = undefined; 
     }
   } else if (!adminApp) {
     console.error('actions.ts: Cannot get Firestore instance because Firebase Admin App is not initialized.');
@@ -57,7 +55,6 @@ function initializeFirebaseAdmin() {
   }
 }
 
-// Call initialization logic when the module is loaded.
 initializeFirebaseAdmin();
 
 
@@ -75,7 +72,8 @@ export async function addScoreToLeaderboardAction(payload: AddScorePayload): Pro
 
   if (!db) {
     console.error('addScoreToLeaderboardAction: Firestore is not initialized. Aborting score submission.');
-    throw new Error('Server configuration error: Firestore not available. Score not submitted.');
+    // This error will be caught by the client and displayed in a toast
+    throw new Error('Server configuration error: Firestore not available. Score not submitted. Please check server logs.');
   }
 
   const game = miniGames.find(g => g.id === payload.gameId);
@@ -96,7 +94,8 @@ export async function addScoreToLeaderboardAction(payload: AddScorePayload): Pro
     console.log('Score added to Firestore with ID:', docRef.id);
   } catch (error: any) {
     console.error('Error in addScoreToLeaderboardAction adding to Firestore:', error.message, error.stack);
-    throw new Error('Failed to submit score to global leaderboard due to a server error.');
+    // This refined error message will be shown in the client toast and Next.js dev overlay.
+    throw new Error('Failed to submit score. Server-side error interacting with database. Check server logs for detailed Firestore/Admin SDK errors.');
   }
 }
 
@@ -104,7 +103,9 @@ export async function getPlayerLeaderboardAction(limit: number = 10): Promise<Pl
   console.log('Server Action: getPlayerLeaderboardAction called');
   if (!db) {
     console.error('getPlayerLeaderboardAction: Firestore is not initialized. Returning empty leaderboard.');
-    // Potentially throw an error or return a specific error state if preferred
+    // In a real app, you might throw an error or return a specific error state
+    // For now, returning empty to prevent breaking UI if db is not set up.
+    // Consider throwing an error to be consistent with addScoreToLeaderboardAction if db init is critical.
     return []; 
   }
 
@@ -112,7 +113,7 @@ export async function getPlayerLeaderboardAction(limit: number = 10): Promise<Pl
     const snapshot = await db.collection(LEADERBOARD_COLLECTION)
       .orderBy('score', 'desc')
       .orderBy('timestamp', 'asc')
-      .limit(100) // Fetch more initially to correctly calculate aggregate scores if needed, then process
+      .limit(100) 
       .get();
 
     const entries: LeaderboardEntry[] = [];
@@ -144,6 +145,8 @@ export async function getPlayerLeaderboardAction(limit: number = 10): Promise<Pl
 
   } catch (error: any) {
     console.error('Error in getPlayerLeaderboardAction fetching from Firestore:', error.message, error.stack);
+    // Optionally re-throw a new error or a more structured error response
+    // throw new Error('Failed to fetch player leaderboard due to a server error. Check server logs.');
     return []; // Return empty on error to prevent breaking UI
   }
 }
@@ -158,7 +161,7 @@ export async function getGroupLeaderboardAction(limit: number = 10): Promise<Gro
     const snapshot = await db.collection(LEADERBOARD_COLLECTION)
       .orderBy('score', 'desc')
       .orderBy('timestamp', 'asc')
-      .limit(200) // Fetch more to allow for group aggregation
+      .limit(200) 
       .get();
 
     const entries: LeaderboardEntry[] = [];
@@ -198,6 +201,8 @@ export async function getGroupLeaderboardAction(limit: number = 10): Promise<Gro
     return sortedGroups;
   } catch (error: any) {
     console.error('Error in getGroupLeaderboardAction fetching from Firestore:', error.message, error.stack);
+    // Optionally re-throw
+    // throw new Error('Failed to fetch group leaderboard due to a server error. Check server logs.');
     return [];
   }
 }

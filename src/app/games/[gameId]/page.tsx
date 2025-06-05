@@ -3,7 +3,6 @@
 import { useParams } from 'next/navigation';
 import Image from 'next/image';
 import { miniGames } from '@/lib/data';
-import CheerGeneratorForm from '@/components/CheerGeneratorForm';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -18,7 +17,6 @@ export default function MiniGamePage() {
   const game = miniGames.find(g => g.id === gameId);
   const progressContext = useContext(ProgressContext);
 
-  const [showCheerForm, setShowCheerForm] = useState(false);
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
@@ -45,7 +43,6 @@ export default function MiniGamePage() {
     if (progressContext && !gameCompleted) {
       progressContext.completeGame(gameId);
     }
-    setShowCheerForm(true); // Show form after "completing"
   };
 
 
@@ -78,8 +75,7 @@ export default function MiniGamePage() {
           </div>
         </CardHeader>
         <CardContent className="p-6 md:p-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="md:col-span-2 space-y-6">
+          <div className="space-y-6">
               <h2 className="text-2xl font-semibold font-headline text-primary">Game Arena</h2>
               <div className="aspect-video bg-muted rounded-lg flex items-center justify-center p-4">
                 <p className="text-muted-foreground text-center">
@@ -89,42 +85,23 @@ export default function MiniGamePage() {
                 </p>
               </div>
               
-              {!showCheerForm && !gameCompleted && (
+              {!gameCompleted && (
                 <Button 
                   onClick={handleGameCompletion} 
                   size="lg" 
                   className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground font-semibold"
                 >
-                  Finish Game & Get Cheer!
+                  Mark as Completed
                 </Button>
               )}
 
-              {gameCompleted && !showCheerForm && (
+              {gameCompleted && (
                  <div className="text-center p-4 border border-green-500 bg-green-50 rounded-md">
                     <CheckCircle2 className="h-8 w-8 text-green-600 mx-auto mb-2" />
-                    <p className="font-semibold text-green-700">You've already completed {game.name}!</p>
-                    <Button 
-                      onClick={() => setShowCheerForm(true)} 
-                      variant="link"
-                      className="text-primary hover:text-primary/80 mt-2"
-                    >
-                      Want another cheer message?
-                    </Button>
+                    <p className="font-semibold text-green-700">You've explored {game.name}!</p>
                  </div>
               )}
-
             </div>
-            <div className="md:col-span-1">
-              {(showCheerForm || gameCompleted) && (
-                <CheerGeneratorForm gameName={game.name} onCheerGenerated={() => {
-                  // Optionally reset form or give feedback
-                  if (progressContext && !gameCompleted) {
-                     progressContext.completeGame(gameId);
-                  }
-                }} />
-              )}
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>

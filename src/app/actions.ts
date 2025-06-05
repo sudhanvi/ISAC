@@ -3,42 +3,63 @@
 
 import type { LeaderboardEntry, PlayerLeaderboardItem, GroupLeaderboardItem } from '@/lib/data';
 import { miniGames, fanbaseMap } from '@/lib/data';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { initializeApp, getApps, cert, App } from 'firebase-admin/app';
+import { getFirestore, Firestore } from 'firebase-admin/firestore';
 
-let db: ReturnType<typeof getFirestore>;
+let adminApp: App | undefined = undefined;
+let db: Firestore | undefined = undefined;
 
-// Initialize Firebase Admin SDK
-if (!getApps().length) {
-  // Option 1: For deployed environments like App Hosting using a service account JSON string from an env variable (recommended for production)
-  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING) {
+function initializeFirebaseAdmin() {
+  if (!getApps().length) {
+    console.log('actions.ts: No Firebase Admin apps initialized. Attempting initialization...');
     try {
-      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING);
-      initializeApp({
-        credential: cert(serviceAccount),
-      });
-      console.log('Firebase Admin SDK initialized with service account from FIREBASE_SERVICE_ACCOUNT_JSON_STRING.');
-    } catch (error) {
-      console.error('Error parsing FIREBASE_SERVICE_ACCOUNT_JSON_STRING:', error);
-      // Fallback or throw error, depending on desired behavior
-      initializeApp(); // Attempt ADC initialization as a fallback
-      console.warn('Falling back to Application Default Credentials for Admin SDK.');
+      if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING) {
+        console.log('actions.ts: FIREBASE_SERVICE_ACCOUNT_JSON_STRING found. Attempting to parse and initialize.');
+        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING);
+        adminApp = initializeApp({
+          credential: cert(serviceAccount),
+        });
+        console.log('actions.ts: Firebase Admin SDK initialized successfully using service account JSON string.');
+      } else if (process.env.NODE_ENV === 'development' && process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+        console.log('actions.ts: NODE_ENV is development and GOOGLE_APPLICATION_CREDENTIALS found. Initializing with ADC for local dev.');
+        adminApp = initializeApp();
+        console.log('actions.ts: Firebase Admin SDK initialized successfully for local development using GOOGLE_APPLICATION_CREDENTIALS.');
+      } else {
+        console.log('actions.ts: No service account JSON string or local dev ADC found. Attempting default ADC initialization (e.g., for App Hosting).');
+        adminApp = initializeApp(); // Relies on Application Default Credentials
+        console.log('actions.ts: Firebase Admin SDK initialized successfully using Application Default Credentials.');
+      }
+    } catch (error: any) {
+      console.error('actions.ts: CRITICAL ERROR during Firebase Admin SDK initializeApp:', error.message, error.stack);
+      // If FIREBASE_SERVICE_ACCOUNT_JSON_STRING was present, log a snippet for debugging (be careful with logging secrets)
+      if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING) {
+        console.error('actions.ts: Snippet of FIREBASE_SERVICE_ACCOUNT_JSON_STRING (first 50 chars):', process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING.substring(0,50));
+      }
+      // Explicitly do not proceed to getFirestore if app initialization failed
+      adminApp = undefined; // Ensure app is marked as uninitialized
     }
+  } else {
+    adminApp = getApps()[0];
+    console.log('actions.ts: Firebase Admin app already initialized.');
   }
-  // Option 2: For local development using GOOGLE_APPLICATION_CREDENTIALS env var pointing to a JSON file path
-  else if (process.env.NODE_ENV === 'development' && process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    initializeApp();
-    console.log('Firebase Admin SDK initialized for local development using GOOGLE_APPLICATION_CREDENTIALS.');
-  }
-  // Option 3: For deployed environments (like App Hosting) using Application Default Credentials (if service account has permissions)
-  else {
-    initializeApp();
-    console.log('Firebase Admin SDK initialized with Application Default Credentials (e.g., for App Hosting).');
+
+  if (adminApp && !db) { // Only try to get Firestore if app was initialized
+    try {
+      db = getFirestore(adminApp);
+      console.log('actions.ts: Firestore instance obtained successfully.');
+    } catch (error: any) {
+      console.error('actions.ts: CRITICAL ERROR obtaining Firestore instance:', error.message, error.stack);
+      db = undefined; // Ensure db is marked as uninitialized
+    }
+  } else if (!adminApp) {
+    console.error('actions.ts: Cannot get Firestore instance because Firebase Admin App is not initialized.');
+    db = undefined;
   }
 }
-db = getFirestore();
 
-const LEADERBOARD_COLLECTION = 'leaderboardEntriesGlobal';
+// Call initialization logic when the module is loaded.
+initializeFirebaseAdmin();
+
 
 export type AddScorePayload = {
   username: string;
@@ -47,34 +68,51 @@ export type AddScorePayload = {
   score: number;
 };
 
+const LEADERBOARD_COLLECTION = 'leaderboardEntriesGlobal';
+
 export async function addScoreToLeaderboardAction(payload: AddScorePayload): Promise<void> {
   console.log('Server Action: addScoreToLeaderboardAction called with:', payload);
 
+  if (!db) {
+    console.error('addScoreToLeaderboardAction: Firestore is not initialized. Aborting score submission.');
+    throw new Error('Server configuration error: Firestore not available. Score not submitted.');
+  }
+
   const game = miniGames.find(g => g.id === payload.gameId);
+  if (!game) {
+    console.warn(`addScoreToLeaderboardAction: Game with id ${payload.gameId} not found in miniGames data. Using ID as name.`);
+  }
   const newEntryData = {
     username: payload.username,
     group: payload.group,
     gameId: payload.gameId,
     gameName: game?.name || payload.gameId,
     score: payload.score,
-    timestamp: Date.now(), // Firestore serverTimestamp is also an option: admin.firestore.FieldValue.serverTimestamp()
+    timestamp: Date.now(),
   };
 
   try {
     const docRef = await db.collection(LEADERBOARD_COLLECTION).add(newEntryData);
     console.log('Score added to Firestore with ID:', docRef.id);
-  } catch (error) {
-    console.error('Error in addScoreToLeaderboardAction adding to Firestore:', error);
-    throw new Error('Failed to submit score to global leaderboard.');
+  } catch (error: any) {
+    console.error('Error in addScoreToLeaderboardAction adding to Firestore:', error.message, error.stack);
+    throw new Error('Failed to submit score to global leaderboard due to a server error.');
   }
 }
 
 export async function getPlayerLeaderboardAction(limit: number = 10): Promise<PlayerLeaderboardItem[]> {
   console.log('Server Action: getPlayerLeaderboardAction called');
+  if (!db) {
+    console.error('getPlayerLeaderboardAction: Firestore is not initialized. Returning empty leaderboard.');
+    // Potentially throw an error or return a specific error state if preferred
+    return []; 
+  }
+
   try {
     const snapshot = await db.collection(LEADERBOARD_COLLECTION)
-      .orderBy('score', 'desc') // Order by score primarily
-      .orderBy('timestamp', 'asc') // Then by earliest time for tie-breaking (optional)
+      .orderBy('score', 'desc')
+      .orderBy('timestamp', 'asc')
+      .limit(100) // Fetch more initially to correctly calculate aggregate scores if needed, then process
       .get();
 
     const entries: LeaderboardEntry[] = [];
@@ -95,32 +133,32 @@ export async function getPlayerLeaderboardAction(limit: number = 10): Promise<Pl
 
     const sortedPlayers = Object.values(players)
       .sort((a, b) => {
-        if (b.totalScore !== a.totalScore) {
-          return b.totalScore - a.totalScore;
-        }
-        // Optional: Further tie-breaking by highest single score, then games played, etc.
-        if (b.highestScore !== a.highestScore) {
-          return b.highestScore - a.highestScore;
-        }
-        return a.gamesPlayed - b.gamesPlayed; // Fewer games played for same score might be better
+        if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+        if (b.highestScore !== a.highestScore) return b.highestScore - a.highestScore;
+        return a.gamesPlayed - b.gamesPlayed;
       })
       .slice(0, limit);
       
     console.log(`Returning ${sortedPlayers.length} players for leaderboard.`);
     return sortedPlayers;
 
-  } catch (error) {
-    console.error('Error in getPlayerLeaderboardAction fetching from Firestore:', error);
+  } catch (error: any) {
+    console.error('Error in getPlayerLeaderboardAction fetching from Firestore:', error.message, error.stack);
     return []; // Return empty on error to prevent breaking UI
   }
 }
 
 export async function getGroupLeaderboardAction(limit: number = 10): Promise<GroupLeaderboardItem[]> {
   console.log('Server Action: getGroupLeaderboardAction called');
+   if (!db) {
+    console.error('getGroupLeaderboardAction: Firestore is not initialized. Returning empty leaderboard.');
+    return [];
+  }
   try {
     const snapshot = await db.collection(LEADERBOARD_COLLECTION)
       .orderBy('score', 'desc')
       .orderBy('timestamp', 'asc')
+      .limit(200) // Fetch more to allow for group aggregation
       .get();
 
     const entries: LeaderboardEntry[] = [];
@@ -134,7 +172,7 @@ export async function getGroupLeaderboardAction(limit: number = 10): Promise<Gro
           fanbaseName: fanbaseMap[entry.group] || null,
           totalScore: 0,
           gamesPlayed: 0,
-          highestScore: 0, // Highest score by any player in this group for a single game
+          highestScore: 0,
           highestScorePlayer: '',
           highestScoreGame: ''
         };
@@ -150,21 +188,16 @@ export async function getGroupLeaderboardAction(limit: number = 10): Promise<Gro
 
     const sortedGroups = Object.values(groups)
       .sort((a, b) => {
-        if (b.totalScore !== a.totalScore) {
-          return b.totalScore - a.totalScore;
-        }
-        if (b.highestScore !== a.highestScore) {
-            return b.highestScore - a.highestScore;
-        }
+        if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+        if (b.highestScore !== a.highestScore) return b.highestScore - a.highestScore;
         return a.gamesPlayed - b.gamesPlayed;
       })
       .slice(0, limit);
 
     console.log(`Returning ${sortedGroups.length} groups for leaderboard.`);
     return sortedGroups;
-  } catch (error) {
-    console.error('Error in getGroupLeaderboardAction fetching from Firestore:', error);
+  } catch (error: any) {
+    console.error('Error in getGroupLeaderboardAction fetching from Firestore:', error.message, error.stack);
     return [];
   }
 }
-

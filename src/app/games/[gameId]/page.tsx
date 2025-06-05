@@ -113,7 +113,7 @@ export default function MiniGamePage() {
 
 
   const isGameEffectivelyActive = useCallback(() => {
-    return isGameActive && !showRotatePrompt; // Game logic should pause if rotate prompt is shown
+    return isGameActive && !showRotatePrompt;
   }, [isGameActive, showRotatePrompt]);
 
   const gameOptions = useMemo(() => ({
@@ -125,15 +125,17 @@ export default function MiniGamePage() {
 
 
   const initializeAndStartGame = useCallback(() => {
-    if (canvasRef.current && !gameInstanceRef.current && gameId && !showRotatePrompt) {
+    if (canvasRef.current && canvasRef.current.parentElement && !gameInstanceRef.current && gameId && !showRotatePrompt) {
       const personalBest = parseInt(localStorage.getItem(`bestScore_${gameId}`) || '0');
       gameInstanceRef.current = new KpopArcheryGame(canvasRef.current, gameOptions);
       gameInstanceRef.current.start(personalBest);
+    } else if (!canvasRef.current || !canvasRef.current.parentElement) {
+      console.warn("initializeAndStartGame: Canvas or its parent not ready.");
     }
   }, [gameOptions, gameId, showRotatePrompt]);
 
  useEffect(() => {
-    if (!isPreGame && isGameActive && !showRotatePrompt) {
+    if (!isPreGame && isGameActive && !showRotatePrompt && canvasRef.current && canvasRef.current.parentElement) {
       initializeAndStartGame();
     }
 
@@ -156,6 +158,10 @@ export default function MiniGamePage() {
       toast({ title: "Details Needed", description: "Please select or enter your K-pop group before starting.", variant: "destructive" });
       return;
     }
+    if (!canvasRef.current || !canvasRef.current.parentElement) {
+      toast({ title: "Game Error", description: "Canvas not ready. Please try refreshing.", variant: "destructive" });
+      return;
+    }
 
     if (gameInstanceRef.current) {
         gameInstanceRef.current.destroy();
@@ -169,7 +175,7 @@ export default function MiniGamePage() {
     setIsGameActive(true);
     setSubmittedScoreDetails(null);
     setGameScore(0);
-    setArrowsLeft(10); // Initialize with starting arrows
+    setArrowsLeft(10); 
     setManualScore('');
   };
 
@@ -233,10 +239,12 @@ export default function MiniGamePage() {
       localStorage.setItem('isacStudioGroup', finalGroup);
 
       setSubmittedScoreDetails({ score: numericScore, username: finalUsername, group: finalGroup });
-      toast({ title: "Score Submitted!", description: `Your score of ${numericScore} for ${gameDetails.name} has been recorded for the global leaderboards. (Backend storage pending user setup)`, className: "bg-green-500 text-white" });
-    } catch (error) {
+      toast({ title: "Score Submitted!", description: `Your score of ${numericScore} for ${gameDetails.name} has been recorded for the global leaderboards.`, className: "bg-green-500 text-white" });
+    } catch (error: any) {
       console.error("Failed to submit score:", error);
-      toast({ title: "Submission Error", description: "Could not submit score to the server. Please try again.", variant: "destructive" });
+      // Check if the error object has a message property, common for Error instances
+      const errorMessage = error.message || "Could not submit score to the server. Please try again or check server logs if the issue persists.";
+      toast({ title: "Submission Error", description: errorMessage, variant: "destructive", duration: 7000 });
     } finally {
       setIsSubmitting(false);
     }
@@ -251,7 +259,7 @@ export default function MiniGamePage() {
     setSubmittedScoreDetails(null);
     setManualScore('');
     setGameScore(0);
-    setArrowsLeft(10); // Reset arrows for new game
+    setArrowsLeft(10); 
     setIsGameActive(false);
     setIsPreGame(true);
   };
@@ -339,7 +347,8 @@ export default function MiniGamePage() {
                   <gameDetails.icon className="h-24 w-24 text-primary mb-6" />
                   <h3 className="text-3xl font-bold font-headline text-primary mb-4">Ready for {gameDetails.name}?</h3>
                   <p className="text-muted-foreground mb-6 max-w-md">
-                    Make sure you've entered your X Username and K-Pop Group above.
+                    Make sure you&apos;ve entered your X Username and K-Pop Group above.
+                    You start with 10 arrows. Hit a bullseye (9-10 points) for +2 bonus arrows!
                     Then, click Start Game to begin. Use <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Spacebar</kbd> or tap/click the screen to shoot.
                   </p>
                   <Button onClick={handleStartGameClick} size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold">

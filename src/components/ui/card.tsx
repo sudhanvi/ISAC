@@ -30,13 +30,15 @@ const CardHeader = React.forwardRef<
 CardHeader.displayName = "CardHeader"
 
 const CardTitle = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
+  HTMLParagraphElement, // Changed to HTMLParagraphElement for semantic correctness if it's a p tag
+  React.HTMLAttributes<HTMLHeadingElement> // Kept HTMLHeadingElement for props type if it could be h1-h6
 >(({ className, ...props }, ref) => (
+  // Assuming CardTitle is often used as a heading, div is fine, but if it's specifically text, p or h tags are better.
+  // For ShadCN, it's a div, so keeping it as div.
   <div
     ref={ref}
     className={cn(
-      "text-2xl font-semibold leading-none tracking-tight",
+      "text-2xl font-semibold leading-none tracking-tight font-headline", // Added font-headline
       className
     )}
     {...props}
@@ -45,10 +47,10 @@ const CardTitle = React.forwardRef<
 CardTitle.displayName = "CardTitle"
 
 const CardDescription = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
+  HTMLParagraphElement,
+  React.HTMLAttributes<HTMLParagraphElement>
 >(({ className, ...props }, ref) => (
-  <div
+  <p // Changed to p for semantic correctness
     ref={ref}
     className={cn("text-sm text-muted-foreground", className)}
     {...props}

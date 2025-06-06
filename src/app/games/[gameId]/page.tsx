@@ -35,6 +35,26 @@ const BOW_SPEED = 2;
 const TARGET_SPEED = 3;
 const INITIAL_ARROWS = 10;
 
+interface GameInstance {
+  animationFrameId?: number;
+  bowY?: number;
+  bowDY?: number;
+  targetY?: number;
+  targetDY?: number;
+  arrowX?: number;
+  arrowY?: number;
+  isArrowFlying?: boolean;
+  bowImage?: HTMLImageElement;
+  targetImage?: HTMLImageElement;
+  arrowImage?: HTMLImageElement;
+  backgroundImage?: HTMLImageElement;
+  bowSpeedIncremented?: boolean;
+  // For decoupled state management to prevent loop interruptions
+  score: number;
+  arrows: number;
+  personalBest: number;
+}
+
 export default function MiniGamePage() {
   const params = useParams();
   const gameId = params.gameId as string;
@@ -43,33 +63,20 @@ export default function MiniGamePage() {
   const { toast } = useToast();
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const gameInstanceRef = useRef<{
-    animationFrameId?: number;
-    bowY?: number;
-    bowDY?: number;
-    targetY?: number;
-    targetDY?: number;
-    arrowX?: number;
-    arrowY?: number;
-    isArrowFlying?: boolean;
-    bowImage?: HTMLImageElement;
-    targetImage?: HTMLImageElement;
-    arrowImage?: HTMLImageElement;
-    backgroundImage?: HTMLImageElement;
-    bowSpeedIncremented?: boolean;
-  }>({});
+  const gameInstanceRef = useRef<GameInstance | null>(null);
 
   const [isClient, setIsClient] = useState(false);
   const [username, setUsername] = useState('');
   const [selectedGroup, setSelectedGroup] = useState('');
   const [newGroup, setNewGroup] = useState('');
   
+  // React state for game values (drives UI outside canvas and game over logic)
   const [gameScore, setGameScore] = useState(0);
   const [arrowsLeft, setArrowsLeft] = useState(INITIAL_ARROWS);
-  const [bestScore, setBestScore] = useState(0); // Personal best for this game
+  const [bestScore, setBestScore] = useState(0); 
 
   const [isGameActive, setIsGameActive] = useState(false);
-  const [isGameOver, setIsGameOver] = useState(false); // Separate from isGameActive
+  const [isGameOver, setIsGameOver] = useState(false); 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedScoreDetails, setSubmittedScoreDetails] = useState<{ score: number; username: string; group: string } | null>(null);
   const [showRotatePrompt, setShowRotatePrompt] = useState(false);
@@ -85,7 +92,12 @@ export default function MiniGamePage() {
       else setNewGroup(storedGroup);
     }
     if (gameId) {
-        setBestScore(parseInt(localStorage.getItem(`bestScore_${gameId}`) || '0'));
+        const storedBest = parseInt(localStorage.getItem(`bestScore_${gameId}`) || '0');
+        setBestScore(storedBest);
+        // Initialize ref if it's the first load
+        if (gameInstanceRef.current) {
+            gameInstanceRef.current.personalBest = storedBest;
+        }
     }
   }, [gameId]);
 
@@ -101,13 +113,14 @@ export default function MiniGamePage() {
         if (canvasRef.current && isGameActive && !gameShouldBePaused) { 
             const canvas = canvasRef.current;
             const dpr = window.devicePixelRatio || 1;
+            // Ensure canvas logical size matches window for DPR scaling
             canvas.width = window.innerWidth * dpr;
             canvas.height = window.innerHeight * dpr;
             canvas.style.width = `${window.innerWidth}px`;
             canvas.style.height = `${window.innerHeight}px`;
             const ctx = canvas.getContext('2d');
             if (ctx) {
-                ctx.scale(dpr, dpr);
+                ctx.scale(dpr, dpr); // Apply scaling for high-res drawing
             }
         }
     };
@@ -129,11 +142,13 @@ export default function MiniGamePage() {
     setIsGameOver(false);
     setSubmittedScoreDetails(null);
     
+    const currentBest = parseInt(localStorage.getItem(`bestScore_${gameId}`) || '0');
+    setBestScore(currentBest); // Ensure React state for bestScore is also up-to-date
+
     gameInstanceRef.current = {
-        backgroundImage: gameInstanceRef.current?.backgroundImage,
-        bowImage: gameInstanceRef.current?.bowImage,
-        targetImage: gameInstanceRef.current?.targetImage,
-        arrowImage: gameInstanceRef.current?.arrowImage,
+        score: 0,
+        arrows: INITIAL_ARROWS,
+        personalBest: currentBest,
         bowY: undefined, 
         bowDY: BOW_SPEED, 
         targetY: undefined, 
@@ -143,8 +158,13 @@ export default function MiniGamePage() {
         isArrowFlying: false,
         bowSpeedIncremented: false,
         animationFrameId: undefined,
+        // Preserve loaded images if they exist
+        backgroundImage: gameInstanceRef.current?.backgroundImage,
+        bowImage: gameInstanceRef.current?.bowImage,
+        targetImage: gameInstanceRef.current?.targetImage,
+        arrowImage: gameInstanceRef.current?.arrowImage,
     };
-  }, []);
+  }, [gameId]);
 
 
   const actualGameLoop = useCallback(() => {
@@ -158,7 +178,7 @@ export default function MiniGamePage() {
       return;
     }
 
-    const game = gameInstanceRef.current;
+    const gameData = gameInstanceRef.current; // Use gameData for current values
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
 
@@ -168,86 +188,85 @@ export default function MiniGamePage() {
       return;
     }
     
-    const W = window.innerWidth;
-    const H = window.innerHeight;
+    const W = window.innerWidth; // Logical width for drawing
+    const H = window.innerHeight; // Logical height for drawing
 
-    ctx.clearRect(0, 0, W, H);
+    ctx.clearRect(0, 0, W, H); // Clear using logical dimensions
 
-    if (game.backgroundImage) {
-        ctx.drawImage(game.backgroundImage, 0, 0, W, H);
+    if (gameData.backgroundImage) {
+        ctx.drawImage(gameData.backgroundImage, 0, 0, W, H);
     }
 
-    // Adjusted scaling factors for larger appearance
-    const bowHeight = H * 0.225; // Approx 180px on 800px height
+    const bowHeight = H * 0.225; 
     const bowWidth = bowHeight * (120 / 180); 
     const bowX = W * 0.10;
 
-    const targetHeight = H * 0.20; // Approx 160px on 800px height
+    const targetHeight = H * 0.20; 
     const targetWidth = targetHeight * (100 / 160); 
     const targetX = W * 0.85;
     
-    const arrowHeight = H * 0.025; // Approx 20px on 800px height
-    const arrowWidth = arrowHeight * (100 / 20); // Arrow aspect ratio 100:20
+    const arrowHeight = H * 0.025; 
+    const arrowWidth = arrowHeight * (100 / 20);
 
-    if (game.bowY === undefined) game.bowY = H / 2;
-    if (game.targetY === undefined) game.targetY = H / 2;
+    if (gameData.bowY === undefined) gameData.bowY = H / 2;
+    if (gameData.targetY === undefined) gameData.targetY = H / 2;
     
-    let currentBowSpeed = BOW_SPEED * (game.bowSpeedIncremented ? 1.5 : 1);
-    if (game.bowDY === undefined || game.bowDY === 0) game.bowDY = BOW_SPEED;
-    game.bowDY = Math.sign(game.bowDY) * currentBowSpeed;
+    let currentBowSpeed = BOW_SPEED * (gameData.bowSpeedIncremented ? 1.5 : 1);
+    if (gameData.bowDY === undefined || gameData.bowDY === 0) gameData.bowDY = BOW_SPEED;
+    gameData.bowDY = Math.sign(gameData.bowDY) * currentBowSpeed;
     
-    game.bowY += game.bowDY;
-    if (game.bowY + bowHeight / 2 > H * 0.85 || game.bowY - bowHeight / 2 < H * 0.15) {
-      game.bowDY *= -1;
+    gameData.bowY += gameData.bowDY;
+    if (gameData.bowY + bowHeight / 2 > H * 0.85 || gameData.bowY - bowHeight / 2 < H * 0.15) {
+      gameData.bowDY *= -1;
     }
-    if (game.bowImage) ctx.drawImage(game.bowImage, bowX, game.bowY - bowHeight / 2, bowWidth, bowHeight);
+    if (gameData.bowImage) ctx.drawImage(gameData.bowImage, bowX, gameData.bowY - bowHeight / 2, bowWidth, bowHeight);
 
-    if (game.targetDY === undefined || game.targetDY === 0) game.targetDY = TARGET_SPEED;
-    game.targetY += game.targetDY;
-    if (game.targetY + targetHeight / 2 > H * 0.9 || game.targetY - targetHeight / 2 < H * 0.1) {
-      game.targetDY *= -1;
+    if (gameData.targetDY === undefined || gameData.targetDY === 0) gameData.targetDY = TARGET_SPEED;
+    gameData.targetY += gameData.targetDY;
+    if (gameData.targetY + targetHeight / 2 > H * 0.9 || gameData.targetY - targetHeight / 2 < H * 0.1) {
+      gameData.targetDY *= -1;
     }
-    if (game.targetImage) ctx.drawImage(game.targetImage, targetX - targetWidth / 2, game.targetY - targetHeight / 2, targetWidth, targetHeight);
+    if (gameData.targetImage) ctx.drawImage(gameData.targetImage, targetX - targetWidth / 2, gameData.targetY - targetHeight / 2, targetWidth, targetHeight);
 
-    if (game.isArrowFlying) {
-      if (game.arrowX === undefined) { // Should be set by handleShoot
+    if (gameData.isArrowFlying) {
+      if (gameData.arrowX === undefined) { 
           const initialArrowX_bowX = W * 0.10;
           const initialArrowX_bowWidth = (H * 0.225) * (120/180);
-          game.arrowX = initialArrowX_bowX + initialArrowX_bowWidth / 2;
+          gameData.arrowX = initialArrowX_bowX + initialArrowX_bowWidth / 2;
       }
-      game.arrowX += ARROW_SPEED;
+      gameData.arrowX += ARROW_SPEED;
 
-      if (game.arrowX > targetX - targetWidth / 2 && game.arrowX < targetX + targetWidth/2 &&
-          game.arrowY && game.arrowY > game.targetY - targetHeight / 2 && game.arrowY < game.targetY + targetHeight / 2) {
-        const offset = Math.abs(game.arrowY - game.targetY);
+      if (gameData.arrowX > targetX - targetWidth / 2 && gameData.arrowX < targetX + targetWidth/2 &&
+          gameData.arrowY && gameData.arrowY > gameData.targetY - targetHeight / 2 && gameData.arrowY < gameData.targetY + targetHeight / 2) {
+        const offset = Math.abs(gameData.arrowY - gameData.targetY);
         const points = Math.max(0, 10 - Math.floor(offset / (targetHeight / 20))); 
         
-        setGameScore(prev => {
-          const newScore = prev + points;
-          if (gameInstanceRef.current && newScore > 20 && !gameInstanceRef.current.bowSpeedIncremented) {
-              gameInstanceRef.current.bowSpeedIncremented = true;
-          }
-          return newScore;
-        });
+        gameData.score += points;
+        setGameScore(prev => prev + points); // Update React state
+
+        if (gameData.score > 20 && !gameData.bowSpeedIncremented) {
+            gameData.bowSpeedIncremented = true;
+        }
 
         if (points >= 9) { 
-          setArrowsLeft(prev => prev + 2);
+          gameData.arrows += 2;
+          setArrowsLeft(prev => prev + 2); // Update React state
         }
-        gameInstanceRef.current.isArrowFlying = false; 
+        gameData.isArrowFlying = false; 
       }
 
-      if (game.arrowX > W) {
-        gameInstanceRef.current.isArrowFlying = false;
+      if (gameData.arrowX > W) {
+        gameData.isArrowFlying = false;
       }
     } else { 
       const currentBowXPos = W * 0.10;
       const currentBowWidthVal = (H * 0.225) * (120/180);
-      game.arrowX = currentBowXPos + currentBowWidthVal / 2; 
-      if(game.bowY) game.arrowY = game.bowY; 
+      gameData.arrowX = currentBowXPos + currentBowWidthVal / 2; 
+      if(gameData.bowY) gameData.arrowY = gameData.bowY; 
     }
 
-    if (game.isArrowFlying && game.arrowImage && game.arrowY) { 
-       ctx.drawImage(game.arrowImage, game.arrowX, game.arrowY - arrowHeight / 2, arrowWidth, arrowHeight);
+    if (gameData.isArrowFlying && gameData.arrowImage && gameData.arrowY) { 
+       ctx.drawImage(gameData.arrowImage, gameData.arrowX, gameData.arrowY - arrowHeight / 2, arrowWidth, arrowHeight);
     }
 
     ctx.fillStyle = 'white';
@@ -255,32 +274,39 @@ export default function MiniGamePage() {
     ctx.shadowColor = 'black';
     ctx.shadowBlur = 5;
     ctx.textAlign = 'left';
-    ctx.fillText(`Score: ${gameScore}`, 20, 40);
-    ctx.fillText(`Arrows: ${arrowsLeft}`, 20, 70);
+    ctx.fillText(`Score: ${gameData.score}`, 20, 40);
+    ctx.fillText(`Arrows: ${gameData.arrows}`, 20, 70);
     ctx.textAlign = 'right';
-    ctx.fillText(`Best: ${bestScore}`, W - 20, 40);
+    ctx.fillText(`Best: ${gameData.personalBest}`, W - 20, 40);
     ctx.shadowBlur = 0;
 
-    if (arrowsLeft <= 0 && !gameInstanceRef.current.isArrowFlying && !isGameOver) {
-      setIsGameOver(true);
+    if (gameData.arrows <= 0 && !gameData.isArrowFlying && !isGameOver) {
+      setIsGameOver(true); // Triggers React effect for game over
       setIsGameActive(false); 
-      if (gameScore > bestScore) {
-        setBestScore(gameScore);
-        if(gameId) localStorage.setItem(`bestScore_${gameId}`, gameScore.toString());
+      if (gameData.score > gameData.personalBest) {
+        gameData.personalBest = gameData.score;
+        setBestScore(gameData.score); // Update React state
+        if(gameId) localStorage.setItem(`bestScore_${gameId}`, gameData.score.toString());
       }
       toast({
         title: "Game Over!",
-        description: `You scored ${gameScore} points. ${gameScore > bestScore ? "That's a new personal best!" : ""}`,
+        description: `You scored ${gameData.score} points. ${gameData.score > gameData.personalBest ? "That's a new personal best!" : ""}`,
       });
     } else {
-      gameInstanceRef.current.animationFrameId = requestAnimationFrame(actualGameLoop);
+      gameData.animationFrameId = requestAnimationFrame(actualGameLoop);
     }
-  }, [isGameActive, isGameOver, gameScore, arrowsLeft, bestScore, gameId, toast, showRotatePrompt]);
+  }, [isGameActive, isGameOver, gameId, showRotatePrompt, setGameScore, setArrowsLeft, setBestScore, setIsGameOver, setIsGameActive, toast]);
 
 
   useEffect(() => {
     if (isGameActive && !isGameOver && !showRotatePrompt && canvasRef.current && isClient) {
       const game = gameInstanceRef.current; 
+      if (!game) {
+          console.error("Game instance ref not initialized before asset loading.");
+          resetGameState(); // Try to re-initialize
+          // Potentially show a toast or error message if reset doesn't help immediately
+          return;
+      }
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
 
@@ -308,20 +334,28 @@ export default function MiniGamePage() {
           img.src = src;
       });
 
-      Promise.all([
-          loadImage('/assets/stadium-background.png'),
-          loadImage('/assets/bow-sprite.png'),
-          loadImage('/assets/target-sprite.png'),
-          loadImage('/assets/arrow-sprite.png'),
-      ]).then(([bg, bowImg, targetImg, arrowImg]) => {
-          game.backgroundImage = bg;
-          game.bowImage = bowImg;
-          game.targetImage = targetImg;
-          game.arrowImage = arrowImg;
+      // Only load assets if they haven't been loaded yet
+      const loadAssetsIfNeeded = async () => {
+        if (game.backgroundImage && game.bowImage && game.targetImage && game.arrowImage) {
+          return; // Assets already loaded
+        }
+        const [bg, bowImg, targetImg, arrowImg] = await Promise.all([
+            loadImage('/assets/stadium-background.png'),
+            loadImage('/assets/bow-sprite.png'),
+            loadImage('/assets/target-sprite.png'),
+            loadImage('/assets/arrow-sprite.png'),
+        ]);
+        game.backgroundImage = bg;
+        game.bowImage = bowImg;
+        game.targetImage = targetImg;
+        game.arrowImage = arrowImg;
+      };
 
+
+      loadAssetsIfNeeded().then(() => {
           const H_logical = window.innerHeight;
-          game.bowY = H_logical / 2;
-          game.targetY = H_logical / 2;
+          if(game.bowY === undefined) game.bowY = H_logical / 2;
+          if(game.targetY === undefined) game.targetY = H_logical / 2;
           if (game.bowDY === undefined || game.bowDY === 0) game.bowDY = BOW_SPEED;
           if (game.targetDY === undefined || game.targetDY === 0) game.targetDY = TARGET_SPEED;
 
@@ -344,7 +378,9 @@ export default function MiniGamePage() {
       cancelAnimationFrame(gameInstanceRef.current.animationFrameId);
       gameInstanceRef.current.animationFrameId = undefined;
     }
-  }, [isGameActive, isGameOver, isClient, toast, actualGameLoop, showRotatePrompt]);
+  // actualGameLoop is the key dependency that changes when its own dependencies change.
+  // The goal is that actualGameLoop itself becomes stable for score/arrow updates.
+  }, [isGameActive, isGameOver, isClient, actualGameLoop, showRotatePrompt, resetGameState, toast]);
 
 
   const handleStartGameClick = () => {
@@ -361,31 +397,33 @@ export default function MiniGamePage() {
     localStorage.setItem('isacStudioUsername', username.trim());
     localStorage.setItem('isacStudioGroup', finalGroup);
 
-    resetGameState();
+    resetGameState(); // This now initializes gameInstanceRef.current correctly
     setIsGameActive(true);
     setIsGameOver(false); 
     setSubmittedScoreDetails(null);
   };
 
   const handleShoot = useCallback(() => {
-    if (!isGameActive || isGameOver || gameInstanceRef.current?.isArrowFlying || arrowsLeft <= 0 || showRotatePrompt) return;
-
+    if (!isGameActive || isGameOver || showRotatePrompt) return;
+    
     const game = gameInstanceRef.current;
-    if (game && game.bowY !== undefined) { 
+    if (!game || game.isArrowFlying || game.arrows <= 0) return;
+
+    if (game.bowY !== undefined) { 
       game.isArrowFlying = true;
       game.arrowY = game.bowY; 
       
-      // Ensure arrowX is set using current dimensions
       const currentW = window.innerWidth;
       const currentH = window.innerHeight;
       const currentBowX = currentW * 0.10;
-      const currentBowHeight = currentH * 0.225; // Use new scaling
+      const currentBowHeight = currentH * 0.225; 
       const currentBowWidth = currentBowHeight * (120 / 180);
       game.arrowX = currentBowX + currentBowWidth / 2;
       
-      setArrowsLeft(prev => prev - 1);
+      game.arrows -= 1;
+      setArrowsLeft(prev => prev - 1); // Update React state
     }
-  }, [isGameActive, isGameOver, arrowsLeft, showRotatePrompt]); 
+  }, [isGameActive, isGameOver, showRotatePrompt, setArrowsLeft]); // setArrowsLeft is stable
 
   useEffect(() => {
     if (!isGameActive || showRotatePrompt) return; 
@@ -404,20 +442,23 @@ export default function MiniGamePage() {
   const handleScoreSubmit = async () => {
     const finalUsername = username.trim();
     const finalGroup = (newGroup.trim() || selectedGroup).trim();
+    // Use gameScore (React state) for submission as it's the source of truth after game over.
+    const scoreToSubmit = gameScore; 
 
-    if (!finalUsername || !finalGroup || gameScore < 0) { 
+
+    if (!finalUsername || !finalGroup || scoreToSubmit < 0) { 
       toast({ title: "Validation Error", description: "Please ensure username, group, and score are valid.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
     try {
-      const payload: AddScorePayload = { username: finalUsername, group: finalGroup, gameId: gameId!, score: gameScore }; 
+      const payload: AddScorePayload = { username: finalUsername, group: finalGroup, gameId: gameId!, score: scoreToSubmit }; 
       await addScoreToLeaderboardAction(payload);
       if (progressContext && gameId && !progressContext.isGameCompleted(gameId)) {
         progressContext.completeGame(gameId);
       }
-      setSubmittedScoreDetails({ score: gameScore, username: finalUsername, group: finalGroup }); 
-      toast({ title: "Score Submitted!", description: `Your score of ${gameScore} has been recorded.`, className: "bg-green-500 text-white" });
+      setSubmittedScoreDetails({ score: scoreToSubmit, username: finalUsername, group: finalGroup }); 
+      toast({ title: "Score Submitted!", description: `Your score of ${scoreToSubmit} has been recorded.`, className: "bg-green-500 text-white" });
     } catch (error: any) {
       console.error("Failed to submit score:", error);
       const serverErrorMessage = error.message && error.message.includes("Database client not available")
@@ -434,14 +475,22 @@ export default function MiniGamePage() {
   const handlePlayAgain = () => {
     setIsGameActive(false); 
     setIsGameOver(false); 
+    // resetGameState will be called by handleStartGameClick if user starts again
+    // Or can be called here if we want to go back to pre-game screen directly.
+    // For now, let's make it go to the pre-game setup screen.
+    setSubmittedScoreDetails(null); // Clear submitted details
+    // Game states (score, arrows) will be reset by resetGameState on next start
   };
   
   const handleQuitGame = () => {
     setIsGameActive(false); 
-    setIsGameOver(true); 
-    if (gameScore > bestScore && gameId) {
-        setBestScore(gameScore);
-        localStorage.setItem(`bestScore_${gameId}`, gameScore.toString());
+    setIsGameOver(true); // This will show the submit score screen
+    // gameScore and bestScore (React state) would have been updated by the game loop's game over logic
+    if (gameInstanceRef.current && gameInstanceRef.current.score > bestScore && gameId) {
+      // This case is mostly handled by the game loop's game over logic itself.
+      // Redundant check here, but safe.
+      setBestScore(gameInstanceRef.current.score);
+      localStorage.setItem(`bestScore_${gameId}`, gameInstanceRef.current.score.toString());
     }
   };
 
@@ -592,3 +641,5 @@ export default function MiniGamePage() {
     </div>
   );
 }
+
+

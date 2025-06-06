@@ -71,8 +71,8 @@ export async function addScoreToLeaderboardAction(payload: AddScorePayload): Pro
   console.log('Server Action: addScoreToLeaderboardAction called with:', payload);
 
   if (!supabase) {
-    console.error('addScoreToLeaderboardAction: Supabase client is not initialized. Aborting score submission. This is a critical server configuration issue, likely SUPABASE_URL or SUPABASE_ANON_KEY missing/incorrect/empty in env.');
-    throw new Error('Server configuration error: Database client not available (SUPABASE_URL or SUPABASE_ANON_KEY likely missing/incorrect/empty in environment). Score not submitted. Please check server logs.');
+    console.error('addScoreToLeaderboardAction: Supabase client is NOT INITIALIZED. This means initializeSupabase() likely failed. Check server logs for CRITICAL ERRORS from initializeSupabase(), especially regarding SUPABASE_URL or SUPABASE_ANON_KEY environment variables.');
+    throw new Error('Server configuration error: Supabase client failed to initialize (SUPABASE_URL or SUPABASE_ANON_KEY likely missing/incorrect/empty in environment or an error occurred during client creation). Score not submitted. Check server logs for details from initializeSupabase().');
   }
 
   const game = miniGames.find(g => g.id === payload.gameId);
@@ -134,7 +134,7 @@ function mapSupabaseEntryToLeaderboardEntry(entry: SupabaseLeaderboardEntry): Le
 export async function getPlayerLeaderboardAction(limit: number = 10): Promise<PlayerLeaderboardItem[]> {
   console.log('Server Action: getPlayerLeaderboardAction called');
   if (!supabase) {
-    console.error('getPlayerLeaderboardAction: Supabase client is not initialized (SUPABASE_URL or SUPABASE_ANON_KEY likely missing/incorrect/empty in env). Returning empty leaderboard.');
+    console.error('getPlayerLeaderboardAction: Supabase client is NOT INITIALIZED. This means initializeSupabase() likely failed. Check server logs for CRITICAL ERRORS from initializeSupabase(). Returning empty leaderboard.');
     return [];
   }
 
@@ -144,7 +144,7 @@ export async function getPlayerLeaderboardAction(limit: number = 10): Promise<Pl
       .select('id, username, group_name, game_id, game_name, score, submitted_timestamp')
       .order('score', { ascending: false })
       .order('submitted_timestamp', { ascending: true })
-      .limit(200);
+      .limit(200); // Fetch more initially to correctly calculate totals before slicing to `limit`
 
     if (error) {
       console.error('Error fetching player data from Supabase. Supabase error details:', error);
@@ -194,7 +194,7 @@ export async function getPlayerLeaderboardAction(limit: number = 10): Promise<Pl
 export async function getGroupLeaderboardAction(limit: number = 10): Promise<GroupLeaderboardItem[]> {
   console.log('Server Action: getGroupLeaderboardAction called');
    if (!supabase) {
-    console.error('getGroupLeaderboardAction: Supabase client is not initialized (SUPABASE_URL or SUPABASE_ANON_KEY likely missing/incorrect/empty in env). Returning empty leaderboard.');
+    console.error('getGroupLeaderboardAction: Supabase client is NOT INITIALIZED. This means initializeSupabase() likely failed. Check server logs for CRITICAL ERRORS from initializeSupabase(). Returning empty leaderboard.');
     return [];
   }
   try {
@@ -203,7 +203,7 @@ export async function getGroupLeaderboardAction(limit: number = 10): Promise<Gro
       .select('id, username, group_name, game_id, game_name, score, submitted_timestamp')
       .order('score', { ascending: false })
       .order('submitted_timestamp', { ascending: true })
-      .limit(300);
+      .limit(300); // Fetch more initially
 
     if (error) {
       console.error('Error fetching group data from Supabase. Supabase error details:', error);
@@ -257,5 +257,3 @@ export async function getGroupLeaderboardAction(limit: number = 10): Promise<Gro
     throw new Error('Failed to fetch group leaderboard due to an unexpected server error during database operation. Check server logs.');
   }
 }
-
-    

@@ -58,7 +58,7 @@ export const fanbaseMap: Record<string, string | null> = {
   'TWICE': 'ONCE',
   'Red Velvet': 'ReVeluv',
   'SEVENTEEN': 'Carat',
-  'NCT': 'NCTzen', // Simplified from "NCT (All Units)" for mapping
+  'NCT': 'NCTzen',
   'GOT7': 'I GOT7',
   'MONSTA X': 'MONBEBE',
   'MAMAMOO': 'Moomoo',
@@ -82,7 +82,7 @@ export const fanbaseMap: Record<string, string | null> = {
   'RIIZE': 'BRIIZE',
   'BOYNEXTDOOR': 'ONEDOOR',
   'KISS OF LIFE': 'KISSY',
-  'BABYMONSTER': 'MONSTIEZ', // Assuming official name, adjust if needed
+  'BABYMONSTER': 'MONSTIEZ',
   'P1Harmony': 'P1ece',
   'TREASURE': 'Treasure Maker',
   'ONEUS': 'TO MOON',
@@ -121,3 +121,4 @@ export type GroupLeaderboardItem = {
   highestScorePlayer: string;
   highestScoreGame: string;
 };
+

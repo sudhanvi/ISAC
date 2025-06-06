@@ -127,7 +127,7 @@ export async function getPlayerLeaderboardAction(limit: number = 10): Promise<Pl
       return [];
     }
     if (!data) {
-      console.log('No data returned for player leaderboard from Supabase.');
+      console.log('No data returned for player leaderboard from Supabase. This could be due to an empty table or RLS policies.');
       return [];
     }
     
@@ -182,7 +182,7 @@ export async function getGroupLeaderboardAction(limit: number = 10): Promise<Gro
       return [];
     }
      if (!data) {
-      console.log('No data returned for group leaderboard from Supabase.');
+      console.log('No data returned for group leaderboard from Supabase. This could be due to an empty table or RLS policies.');
       return [];
     }
 

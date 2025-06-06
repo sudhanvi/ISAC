@@ -49,8 +49,8 @@ export async function addScoreToLeaderboardAction(payload: AddScorePayload): Pro
   console.log('Server Action: addScoreToLeaderboardAction called with:', payload);
 
   if (!supabase) {
-    console.error('addScoreToLeaderboardAction: Supabase client is not initialized. Aborting score submission. This is a critical server configuration issue.');
-    throw new Error('Server configuration error: Database client not available. Score not submitted. Please check server logs.');
+    console.error('addScoreToLeaderboardAction: Supabase client is not initialized. Aborting score submission. This is a critical server configuration issue (likely missing SUPABASE_URL or SUPABASE_ANON_KEY environment variables).');
+    throw new Error('Server configuration error: Supabase client is not available. This usually means SUPABASE_URL or SUPABASE_ANON_KEY environment variables are missing or incorrect. Please check server logs for more details from initialization.');
   }
 
   const game = miniGames.find(g => g.id === payload.gameId);
@@ -110,7 +110,7 @@ function mapSupabaseEntryToLeaderboardEntry(entry: SupabaseLeaderboardEntry): Le
 export async function getPlayerLeaderboardAction(limit: number = 10): Promise<PlayerLeaderboardItem[]> {
   console.log('Server Action: getPlayerLeaderboardAction called');
   if (!supabase) {
-    console.error('getPlayerLeaderboardAction: Supabase client is not initialized. Returning empty leaderboard. This is a critical server configuration issue.');
+    console.error('getPlayerLeaderboardAction: Supabase client is not initialized. Returning empty leaderboard. This is a critical server configuration issue (likely missing SUPABASE_URL or SUPABASE_ANON_KEY environment variables).');
     return [];
   }
 
@@ -127,7 +127,7 @@ export async function getPlayerLeaderboardAction(limit: number = 10): Promise<Pl
       return [];
     }
     if (!data) {
-      console.log('No data returned for player leaderboard from Supabase. This could be due to an empty table or RLS policies.');
+      console.log('getPlayerLeaderboardAction: No data returned for player leaderboard from Supabase. This could be due to an empty table or RLS policies.');
       return [];
     }
     
@@ -154,7 +154,7 @@ export async function getPlayerLeaderboardAction(limit: number = 10): Promise<Pl
       })
       .slice(0, limit);
 
-    console.log(`Returning ${sortedPlayers.length} players for leaderboard.`);
+    console.log(`getPlayerLeaderboardAction: Returning ${sortedPlayers.length} players for leaderboard.`);
     return sortedPlayers;
 
   } catch (error: any) {
@@ -166,7 +166,7 @@ export async function getPlayerLeaderboardAction(limit: number = 10): Promise<Pl
 export async function getGroupLeaderboardAction(limit: number = 10): Promise<GroupLeaderboardItem[]> {
   console.log('Server Action: getGroupLeaderboardAction called');
    if (!supabase) {
-    console.error('getGroupLeaderboardAction: Supabase client is not initialized. Returning empty leaderboard. This is a critical server configuration issue.');
+    console.error('getGroupLeaderboardAction: Supabase client is not initialized. Returning empty leaderboard. This is a critical server configuration issue (likely missing SUPABASE_URL or SUPABASE_ANON_KEY environment variables).');
     return [];
   }
   try {
@@ -182,7 +182,7 @@ export async function getGroupLeaderboardAction(limit: number = 10): Promise<Gro
       return [];
     }
      if (!data) {
-      console.log('No data returned for group leaderboard from Supabase. This could be due to an empty table or RLS policies.');
+      console.log('getGroupLeaderboardAction: No data returned for group leaderboard from Supabase. This could be due to an empty table or RLS policies.');
       return [];
     }
 
@@ -219,7 +219,7 @@ export async function getGroupLeaderboardAction(limit: number = 10): Promise<Gro
       })
       .slice(0, limit);
 
-    console.log(`Returning ${sortedGroups.length} groups for leaderboard.`);
+    console.log(`getGroupLeaderboardAction: Returning ${sortedGroups.length} groups for leaderboard.`);
     return sortedGroups;
   } catch (error: any) {
     console.error('Error in getGroupLeaderboardAction with Supabase:', error.message, error.stack);

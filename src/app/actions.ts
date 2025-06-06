@@ -5,29 +5,60 @@ import type { LeaderboardEntry, PlayerLeaderboardItem, GroupLeaderboardItem } fr
 import { miniGames, fanbaseMap } from '@/lib/data';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://iyukpsewpwpttglstdto.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5dWtwc2V3cHdwdHRnbHN0ZHRvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkxNzU2ODIsImV4cCI6MjA2NDc1MTY4Mn0.u4bJtwEllp2Wgwq6eHF78q43jMhuMeZr2w4JXjPXYso';
-
 let supabase: SupabaseClient | undefined = undefined;
-const LEADERBOARD_TABLE_NAME = 'leaderboard_entries_global';
+const LEADERBOARD_TABLE_NAME = 'leaderboard_entries_global'; // Make sure this matches your Supabase table
 
-try {
-  if (!supabaseUrl) {
-    console.error('actions.ts: CRITICAL ERROR - Hardcoded SUPABASE_URL is missing or empty.');
-  } else if (!supabaseAnonKey) {
-    console.error('actions.ts: CRITICAL ERROR - Hardcoded SUPABASE_ANON_KEY is missing or empty.');
-  } else {
-    supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        persistSession: false, // Recommended for server-side usage
-      }
-    });
-    console.log('actions.ts: Supabase client CREATED successfully using hardcoded credentials.');
+function initializeSupabase() {
+  if (supabase) {
+    // console.log('actions.ts: Supabase client already initialized. Skipping re-initialization.');
+    return;
   }
-} catch (error: any) {
-  console.error('actions.ts: CRITICAL ERROR during Supabase client creation with hardcoded credentials:', error.message, error.stack);
-  supabase = undefined;
+  console.log('actions.ts: Attempting to initialize Supabase client from environment variables...');
+
+  const supabaseUrlFromEnv = process.env.SUPABASE_URL;
+  const supabaseAnonKeyFromEnv = process.env.SUPABASE_ANON_KEY;
+
+  let urlPreview = 'UNDEFINED or EMPTY';
+  if (supabaseUrlFromEnv && supabaseUrlFromEnv.length > 0) {
+    urlPreview = `${supabaseUrlFromEnv.substring(0, 20)}... (length: ${supabaseUrlFromEnv.length})`;
+  } else if (supabaseUrlFromEnv === '') {
+    urlPreview = 'EMPTY_STRING';
+  }
+  console.log(`actions.ts: SUPABASE_URL from env: ${urlPreview}`);
+
+  let keyPreview = 'UNDEFINED or EMPTY';
+  if (supabaseAnonKeyFromEnv && supabaseAnonKeyFromEnv.length > 0) {
+    keyPreview = `${supabaseAnonKeyFromEnv.substring(0, 10)}...${supabaseAnonKeyFromEnv.substring(supabaseAnonKeyFromEnv.length - 10)} (length: ${supabaseAnonKeyFromEnv.length})`;
+  } else if (supabaseAnonKeyFromEnv === '') {
+    keyPreview = 'EMPTY_STRING';
+  }
+  console.log(`actions.ts: SUPABASE_ANON_KEY from env: ${keyPreview}`);
+
+  if (supabaseUrlFromEnv && supabaseUrlFromEnv.length > 0 && supabaseAnonKeyFromEnv && supabaseAnonKeyFromEnv.length > 0) {
+    console.log('actions.ts: Both SUPABASE_URL and SUPABASE_ANON_KEY appear to be validly set from env. Proceeding to create client.');
+    try {
+      supabase = createClient(supabaseUrlFromEnv, supabaseAnonKeyFromEnv, {
+        auth: {
+          persistSession: false, // Recommended for server-side usage
+        }
+      });
+      console.log('actions.ts: Supabase client CREATED successfully from environment variables.');
+    } catch (error: any) {
+      console.error('actions.ts: CRITICAL ERROR during Supabase client creation with environment variables:', error.message, error.stack);
+      supabase = undefined; // Explicitly set to undefined on failure
+    }
+  } else {
+    if (!supabaseUrlFromEnv || supabaseUrlFromEnv.length === 0) {
+      console.error('actions.ts: CRITICAL ERROR - SUPABASE_URL environment variable is not set or is empty. Supabase client cannot be initialized.');
+    }
+    if (!supabaseAnonKeyFromEnv || supabaseAnonKeyFromEnv.length === 0) {
+      console.error('actions.ts: CRITICAL ERROR - SUPABASE_ANON_KEY environment variable is not set or is empty. Supabase client cannot be initialized.');
+    }
+    supabase = undefined; // Explicitly set to undefined
+  }
 }
+
+initializeSupabase(); // Initialize on module load
 
 export type AddScorePayload = {
   username: string;
@@ -40,8 +71,8 @@ export async function addScoreToLeaderboardAction(payload: AddScorePayload): Pro
   console.log('Server Action: addScoreToLeaderboardAction called with:', payload);
 
   if (!supabase) {
-    console.error('addScoreToLeaderboardAction: Supabase client is not initialized. Aborting score submission. This likely means the hardcoded credentials failed to initialize the client.');
-    throw new Error('Server configuration error: Database client not available (hardcoded credentials). Score not submitted. Please check server logs.');
+    console.error('addScoreToLeaderboardAction: Supabase client is not initialized. Aborting score submission. This is a critical server configuration issue, likely SUPABASE_URL or SUPABASE_ANON_KEY missing/incorrect/empty in env.');
+    throw new Error('Server configuration error: Database client not available (SUPABASE_URL or SUPABASE_ANON_KEY likely missing/incorrect/empty in environment). Score not submitted. Please check server logs.');
   }
 
   const game = miniGames.find(g => g.id === payload.gameId);
@@ -51,11 +82,11 @@ export async function addScoreToLeaderboardAction(payload: AddScorePayload): Pro
 
   const newEntryData = {
     username: payload.username,
-    group_name: payload.group,
+    group_name: payload.group, // Supabase table uses group_name
     game_id: payload.gameId,
-    game_name: game?.name || payload.gameId,
+    game_name: game?.name || payload.gameId, // Use game name from miniGames or gameId if not found
     score: payload.score,
-    submitted_timestamp: Date.now(),
+    submitted_timestamp: Date.now(), // Use current timestamp
   };
 
   try {
@@ -103,7 +134,7 @@ function mapSupabaseEntryToLeaderboardEntry(entry: SupabaseLeaderboardEntry): Le
 export async function getPlayerLeaderboardAction(limit: number = 10): Promise<PlayerLeaderboardItem[]> {
   console.log('Server Action: getPlayerLeaderboardAction called');
   if (!supabase) {
-    console.error('getPlayerLeaderboardAction: Supabase client is not initialized (hardcoded credentials). Returning empty leaderboard.');
+    console.error('getPlayerLeaderboardAction: Supabase client is not initialized (SUPABASE_URL or SUPABASE_ANON_KEY likely missing/incorrect/empty in env). Returning empty leaderboard.');
     return [];
   }
 
@@ -163,7 +194,7 @@ export async function getPlayerLeaderboardAction(limit: number = 10): Promise<Pl
 export async function getGroupLeaderboardAction(limit: number = 10): Promise<GroupLeaderboardItem[]> {
   console.log('Server Action: getGroupLeaderboardAction called');
    if (!supabase) {
-    console.error('getGroupLeaderboardAction: Supabase client is not initialized (hardcoded credentials). Returning empty leaderboard.');
+    console.error('getGroupLeaderboardAction: Supabase client is not initialized (SUPABASE_URL or SUPABASE_ANON_KEY likely missing/incorrect/empty in env). Returning empty leaderboard.');
     return [];
   }
   try {
@@ -226,3 +257,5 @@ export async function getGroupLeaderboardAction(limit: number = 10): Promise<Gro
     throw new Error('Failed to fetch group leaderboard due to an unexpected server error during database operation. Check server logs.');
   }
 }
+
+    

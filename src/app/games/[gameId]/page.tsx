@@ -197,15 +197,15 @@ export default function MiniGamePage() {
         ctx.drawImage(gameData.backgroundImage, 0, 0, W, H);
     }
 
-    const bowHeight = H * 0.225; 
+    const bowHeight = H * 0.25; 
     const bowWidth = bowHeight * (120 / 180); 
     const bowX = W * 0.10;
 
-    const targetHeight = H * 0.20; 
+    const targetHeight = H * 0.22; 
     const targetWidth = targetHeight * (100 / 160); 
     const targetX = W * 0.85;
     
-    const arrowHeight = H * 0.025; 
+    const arrowHeight = H * 0.03; 
     const arrowWidth = arrowHeight * (100 / 20);
 
     if (gameData.bowY === undefined) gameData.bowY = H / 2;
@@ -231,7 +231,8 @@ export default function MiniGamePage() {
     if (gameData.isArrowFlying) {
       if (gameData.arrowX === undefined) { 
           const initialArrowX_bowX = W * 0.10;
-          const initialArrowX_bowWidth = (H * 0.225) * (120/180);
+          const initialArrowX_bowHeight = H * 0.25; // Use new bow height factor
+          const initialArrowX_bowWidth = initialArrowX_bowHeight * (120/180);
           gameData.arrowX = initialArrowX_bowX + initialArrowX_bowWidth / 2;
       }
       gameData.arrowX += ARROW_SPEED;
@@ -260,7 +261,8 @@ export default function MiniGamePage() {
       }
     } else { 
       const currentBowXPos = W * 0.10;
-      const currentBowWidthVal = (H * 0.225) * (120/180);
+      const currentBowHeightVal = H * 0.25; // Use new bow height factor
+      const currentBowWidthVal = currentBowHeightVal * (120/180);
       gameData.arrowX = currentBowXPos + currentBowWidthVal / 2; 
       if(gameData.bowY) gameData.arrowY = gameData.bowY; 
     }
@@ -304,7 +306,6 @@ export default function MiniGamePage() {
       if (!game) {
           console.error("Game instance ref not initialized before asset loading.");
           resetGameState(); // Try to re-initialize
-          // Potentially show a toast or error message if reset doesn't help immediately
           return;
       }
       const canvas = canvasRef.current;
@@ -334,10 +335,9 @@ export default function MiniGamePage() {
           img.src = src;
       });
 
-      // Only load assets if they haven't been loaded yet
       const loadAssetsIfNeeded = async () => {
         if (game.backgroundImage && game.bowImage && game.targetImage && game.arrowImage) {
-          return; // Assets already loaded
+          return; 
         }
         const [bg, bowImg, targetImg, arrowImg] = await Promise.all([
             loadImage('/assets/stadium-background.png'),
@@ -378,8 +378,6 @@ export default function MiniGamePage() {
       cancelAnimationFrame(gameInstanceRef.current.animationFrameId);
       gameInstanceRef.current.animationFrameId = undefined;
     }
-  // actualGameLoop is the key dependency that changes when its own dependencies change.
-  // The goal is that actualGameLoop itself becomes stable for score/arrow updates.
   }, [isGameActive, isGameOver, isClient, actualGameLoop, showRotatePrompt, resetGameState, toast]);
 
 
@@ -397,7 +395,7 @@ export default function MiniGamePage() {
     localStorage.setItem('isacStudioUsername', username.trim());
     localStorage.setItem('isacStudioGroup', finalGroup);
 
-    resetGameState(); // This now initializes gameInstanceRef.current correctly
+    resetGameState(); 
     setIsGameActive(true);
     setIsGameOver(false); 
     setSubmittedScoreDetails(null);
@@ -416,14 +414,14 @@ export default function MiniGamePage() {
       const currentW = window.innerWidth;
       const currentH = window.innerHeight;
       const currentBowX = currentW * 0.10;
-      const currentBowHeight = currentH * 0.225; 
+      const currentBowHeight = currentH * 0.25; // Use new bow height factor
       const currentBowWidth = currentBowHeight * (120 / 180);
       game.arrowX = currentBowX + currentBowWidth / 2;
       
       game.arrows -= 1;
       setArrowsLeft(prev => prev - 1); // Update React state
     }
-  }, [isGameActive, isGameOver, showRotatePrompt, setArrowsLeft]); // setArrowsLeft is stable
+  }, [isGameActive, isGameOver, showRotatePrompt, setArrowsLeft]); 
 
   useEffect(() => {
     if (!isGameActive || showRotatePrompt) return; 
@@ -442,7 +440,6 @@ export default function MiniGamePage() {
   const handleScoreSubmit = async () => {
     const finalUsername = username.trim();
     const finalGroup = (newGroup.trim() || selectedGroup).trim();
-    // Use gameScore (React state) for submission as it's the source of truth after game over.
     const scoreToSubmit = gameScore; 
 
 
@@ -475,20 +472,13 @@ export default function MiniGamePage() {
   const handlePlayAgain = () => {
     setIsGameActive(false); 
     setIsGameOver(false); 
-    // resetGameState will be called by handleStartGameClick if user starts again
-    // Or can be called here if we want to go back to pre-game screen directly.
-    // For now, let's make it go to the pre-game setup screen.
-    setSubmittedScoreDetails(null); // Clear submitted details
-    // Game states (score, arrows) will be reset by resetGameState on next start
+    setSubmittedScoreDetails(null); 
   };
   
   const handleQuitGame = () => {
     setIsGameActive(false); 
-    setIsGameOver(true); // This will show the submit score screen
-    // gameScore and bestScore (React state) would have been updated by the game loop's game over logic
+    setIsGameOver(true); 
     if (gameInstanceRef.current && gameInstanceRef.current.score > bestScore && gameId) {
-      // This case is mostly handled by the game loop's game over logic itself.
-      // Redundant check here, but safe.
       setBestScore(gameInstanceRef.current.score);
       localStorage.setItem(`bestScore_${gameId}`, gameInstanceRef.current.score.toString());
     }
@@ -643,3 +633,4 @@ export default function MiniGamePage() {
 }
 
 
+    

@@ -1,39 +1,46 @@
-# Settings to manage and configure a Firebase App Hosting backend.
-# https://firebase.google.com/docs/app-hosting/configure
 
-# Settings for Cloud Run
+# 1) Configure Cloud Run options (memory, CPU, scaling, etc.)
 runConfig:
-  # Minimum number of container instances that are kept warm.
-  # Default is 0, which means it can scale to zero.
+  # Minimum number of running instances (0 means auto –scale to zero)
   minInstances: 0
-  # Maximum number of container instances that can be spun up.
-  # Adjust based on expected traffic and budget.
+  # Maximum number of instances it can scale up to
   maxInstances: 10
-  # The number of concurrent requests that can be handled by each instance.
-  # Default is 80.
+  # How many concurrent requests an instance can handle
   concurrency: 80
-  # CPU allocation for each instance. 1 is often a good starting point.
-  # Can be a value like 1, 2, 4.
+  # CPU per instance (1 vCPU)
   cpu: 1
-  # Memory allocation for each instance in MiB.
-  # Common values: 256, 512, 1024, 2048.
+  # Memory per instance (512 MiB)
   memoryMiB: 512
 
-# Environment variables and secrets
-# https://firebase.google.com/docs/app-hosting/configure-env
+# 2) Define environment variables that come from Secret Manager
 env:
   - variable: SUPABASE_URL
-    secret: SUPABASE_URL # Secret ID in Google Cloud Secret Manager for your Supabase Project URL
+    secret: SUPABASE_URL
     availability:
       - RUNTIME
   - variable: SUPABASE_ANON_KEY
-    secret: SUPABASE_ANON_KEY # Secret ID in Google Cloud Secret Manager for your Supabase Anon Public Key
+    secret: SUPABASE_ANON_KEY
     availability:
       - RUNTIME
 
-  # Example of a plain text environment variable
-  # - variable: MY_OTHER_VARIABLE
-  #   value: "my_value"
-  #   availability: # Optional: defaults to RUNTIME if not specified
-  #     - BUILD
-  #     - RUNTIME
+# 3) (Optional) If you need plain-text env vars too, use `value:` instead of `secret:`
+#  - variable: OTHER_PLAIN_VAR
+#    value: "some-value"
+#    availability:
+#      - BUILD
+#      - RUNTIME
+
+# 4) Finally, set up rewrites so every request goes to your Cloud Run service
+#    (replace serviceId and region with your actual Cloud Run service name/region).
+rewrites:
+  - source: "**"
+    run:
+      serviceId: YOUR_CLOUD_RUN_SERVICE_NAME
+      region: us-central1
+      platform: managed
+      # You can also set memory, cpu, scaling here instead of runConfig if you prefer:
+      # memory: "512Mi"
+      # cpu: 1
+      # minInstances: 0
+      # maxInstances: 10
+      # concurrency: 80

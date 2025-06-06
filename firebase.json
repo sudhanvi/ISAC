@@ -1,0 +1,30 @@
+
+{
+  "hosting": {
+    "public": "public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "run": {
+          "serviceId": "YOUR_CLOUD_RUN_SERVICE_NAME",
+          "region": "us-central1"
+        }
+      }
+    ],
+    "env": [
+      {
+        "variable": "SUPABASE_URL",
+        "secret": "SUPABASE_URL"
+      },
+      {
+        "variable": "SUPABASE_ANON_KEY",
+        "secret": "SUPABASE_ANON_KEY"
+      }
+    ]
+  }
+}

@@ -78,7 +78,7 @@ export default function LeaderboardPage() {
         ISAC Studio Global Leaderboards
       </h1>
       <p className="text-xl text-center text-foreground/80">
-        See who's topping the charts! (Backend database connection required for full functionality)
+        See who's topping the charts!
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">

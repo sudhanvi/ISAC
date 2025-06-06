@@ -197,15 +197,15 @@ export default function MiniGamePage() {
         ctx.drawImage(gameData.backgroundImage, 0, 0, W, H);
     }
 
-    const bowHeight = H * 0.25; 
+    const bowHeight = H * 0.40; 
     const bowWidth = bowHeight * (120 / 180); 
     const bowX = W * 0.10;
 
-    const targetHeight = H * 0.22; 
+    const targetHeight = H * 0.32.5; 
     const targetWidth = targetHeight * (100 / 160); 
     const targetX = W * 0.85;
     
-    const arrowHeight = H * 0.03; 
+    const arrowHeight = H * 0.05; 
     const arrowWidth = arrowHeight * (100 / 20);
 
     if (gameData.bowY === undefined) gameData.bowY = H / 2;

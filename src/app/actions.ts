@@ -6,11 +6,11 @@ import { miniGames, fanbaseMap } from '@/lib/data';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 let supabase: SupabaseClient | undefined = undefined;
-const LEADERBOARD_TABLE_NAME = 'leaderboard_entries_global'; // Make sure this matches your Supabase table
+const LEADERBOARD_TABLE_NAME = 'leaderboard_entries_global';
 
 function initializeSupabase() {
   if (supabase) {
-    // console.log('actions.ts: Supabase client already initialized. Skipping re-initialization.');
+    console.log('actions.ts: Supabase client already initialized. Skipping re-initialization.');
     return;
   }
   console.log('actions.ts: Attempting to initialize Supabase client from environment variables...');
@@ -39,13 +39,13 @@ function initializeSupabase() {
     try {
       supabase = createClient(supabaseUrlFromEnv, supabaseAnonKeyFromEnv, {
         auth: {
-          persistSession: false, // Recommended for server-side usage
+          persistSession: false, 
         }
       });
       console.log('actions.ts: Supabase client CREATED successfully from environment variables.');
     } catch (error: any) {
       console.error('actions.ts: CRITICAL ERROR during Supabase client creation with environment variables:', error.message, error.stack);
-      supabase = undefined; // Explicitly set to undefined on failure
+      supabase = undefined;
     }
   } else {
     if (!supabaseUrlFromEnv || supabaseUrlFromEnv.length === 0) {
@@ -54,11 +54,11 @@ function initializeSupabase() {
     if (!supabaseAnonKeyFromEnv || supabaseAnonKeyFromEnv.length === 0) {
       console.error('actions.ts: CRITICAL ERROR - SUPABASE_ANON_KEY environment variable is not set or is empty. Supabase client cannot be initialized.');
     }
-    supabase = undefined; // Explicitly set to undefined
+    supabase = undefined;
   }
 }
 
-initializeSupabase(); // Initialize on module load
+initializeSupabase();
 
 export type AddScorePayload = {
   username: string;
@@ -68,11 +68,17 @@ export type AddScorePayload = {
 };
 
 export async function addScoreToLeaderboardAction(payload: AddScorePayload): Promise<void> {
-  console.log('Server Action: addScoreToLeaderboardAction called with:', payload);
+  console.log('Server Action: addScoreToLeaderboardAction called with:', JSON.stringify(payload));
 
   if (!supabase) {
-    console.error('addScoreToLeaderboardAction: Supabase client is NOT INITIALIZED. This means initializeSupabase() likely failed. Check server logs for CRITICAL ERRORS from initializeSupabase(), especially regarding SUPABASE_URL or SUPABASE_ANON_KEY environment variables.');
-    throw new Error('Server configuration error: Supabase client failed to initialize (SUPABASE_URL or SUPABASE_ANON_KEY likely missing/incorrect/empty in environment or an error occurred during client creation). Score not submitted. Check server logs for details from initializeSupabase().');
+    console.error(`CRITICAL SERVER ERROR in addScoreToLeaderboardAction: Supabase client is not available.
+    This means initializeSupabase() FAILED earlier during application startup. The application cannot connect to the database.
+    TROUBLESHOOTING STEPS:
+    1. Carefully review the Cloud Run server logs for messages from the 'initializeSupabase()' function that ran when the server started.
+    2. Specifically look for logs stating whether 'SUPABASE_URL from env:' and 'SUPABASE_ANON_KEY from env:' were 'UNDEFINED or EMPTY'.
+    3. If those variables are logged as missing or empty, the issue is with your apphosting.yaml configuration, Google Cloud Secret Manager setup (secret names, actual secret values, or IAM permissions), or the deployment process.
+    Payload that could not be processed: ${JSON.stringify(payload)}`);
+    throw new Error('Server configuration error: Database connection failed. The detailed reason (e.g., missing SUPABASE_URL/SUPABASE_ANON_KEY) IS LOGGED ON THE SERVER. The client receives a generic error for security. Check server startup logs.');
   }
 
   const game = miniGames.find(g => g.id === payload.gameId);
@@ -82,11 +88,11 @@ export async function addScoreToLeaderboardAction(payload: AddScorePayload): Pro
 
   const newEntryData = {
     username: payload.username,
-    group_name: payload.group, // Supabase table uses group_name
+    group_name: payload.group,
     game_id: payload.gameId,
-    game_name: game?.name || payload.gameId, // Use game name from miniGames or gameId if not found
+    game_name: game?.name || payload.gameId,
     score: payload.score,
-    submitted_timestamp: Date.now(), // Use current timestamp
+    submitted_timestamp: Date.now(),
   };
 
   try {
@@ -134,8 +140,13 @@ function mapSupabaseEntryToLeaderboardEntry(entry: SupabaseLeaderboardEntry): Le
 export async function getPlayerLeaderboardAction(limit: number = 10): Promise<PlayerLeaderboardItem[]> {
   console.log('Server Action: getPlayerLeaderboardAction called');
   if (!supabase) {
-    console.error('getPlayerLeaderboardAction: Supabase client is NOT INITIALIZED. This means initializeSupabase() likely failed. Check server logs for CRITICAL ERRORS from initializeSupabase(). Returning empty leaderboard.');
-    return [];
+     console.error(`CRITICAL SERVER ERROR in getPlayerLeaderboardAction: Supabase client is not available.
+    This means initializeSupabase() FAILED earlier during application startup. The application cannot connect to the database.
+    TROUBLESHOOTING STEPS:
+    1. Carefully review the Cloud Run server logs for messages from the 'initializeSupabase()' function that ran when the server started.
+    2. Specifically look for logs stating whether 'SUPABASE_URL from env:' and 'SUPABASE_ANON_KEY from env:' were 'UNDEFINED or EMPTY'.
+    3. If those variables are logged as missing or empty, the issue is with your apphosting.yaml configuration, Google Cloud Secret Manager setup (secret names, actual secret values, or IAM permissions), or the deployment process.`);
+    throw new Error('Server configuration error: Database connection failed. The detailed reason (e.g., missing SUPABASE_URL/SUPABASE_ANON_KEY) IS LOGGED ON THE SERVER. The client receives a generic error for security. Check server startup logs.');
   }
 
   try {
@@ -144,7 +155,7 @@ export async function getPlayerLeaderboardAction(limit: number = 10): Promise<Pl
       .select('id, username, group_name, game_id, game_name, score, submitted_timestamp')
       .order('score', { ascending: false })
       .order('submitted_timestamp', { ascending: true })
-      .limit(200); // Fetch more initially to correctly calculate totals before slicing to `limit`
+      .limit(200); 
 
     if (error) {
       console.error('Error fetching player data from Supabase. Supabase error details:', error);
@@ -194,8 +205,13 @@ export async function getPlayerLeaderboardAction(limit: number = 10): Promise<Pl
 export async function getGroupLeaderboardAction(limit: number = 10): Promise<GroupLeaderboardItem[]> {
   console.log('Server Action: getGroupLeaderboardAction called');
    if (!supabase) {
-    console.error('getGroupLeaderboardAction: Supabase client is NOT INITIALIZED. This means initializeSupabase() likely failed. Check server logs for CRITICAL ERRORS from initializeSupabase(). Returning empty leaderboard.');
-    return [];
+    console.error(`CRITICAL SERVER ERROR in getGroupLeaderboardAction: Supabase client is not available.
+    This means initializeSupabase() FAILED earlier during application startup. The application cannot connect to the database.
+    TROUBLESHOOTING STEPS:
+    1. Carefully review the Cloud Run server logs for messages from the 'initializeSupabase()' function that ran when the server started.
+    2. Specifically look for logs stating whether 'SUPABASE_URL from env:' and 'SUPABASE_ANON_KEY from env:' were 'UNDEFINED or EMPTY'.
+    3. If those variables are logged as missing or empty, the issue is with your apphosting.yaml configuration, Google Cloud Secret Manager setup (secret names, actual secret values, or IAM permissions), or the deployment process.`);
+    throw new Error('Server configuration error: Database connection failed. The detailed reason (e.g., missing SUPABASE_URL/SUPABASE_ANON_KEY) IS LOGGED ON THE SERVER. The client receives a generic error for security. Check server startup logs.');
   }
   try {
     const { data, error } = await supabase
@@ -203,7 +219,7 @@ export async function getGroupLeaderboardAction(limit: number = 10): Promise<Gro
       .select('id, username, group_name, game_id, game_name, score, submitted_timestamp')
       .order('score', { ascending: false })
       .order('submitted_timestamp', { ascending: true })
-      .limit(300); // Fetch more initially
+      .limit(300); 
 
     if (error) {
       console.error('Error fetching group data from Supabase. Supabase error details:', error);
@@ -257,3 +273,5 @@ export async function getGroupLeaderboardAction(limit: number = 10): Promise<Gro
     throw new Error('Failed to fetch group leaderboard due to an unexpected server error during database operation. Check server logs.');
   }
 }
+
+    

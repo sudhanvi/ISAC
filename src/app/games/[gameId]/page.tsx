@@ -7,8 +7,8 @@ import { addScoreToLeaderboardAction, AddScorePayload } from '@/app/actions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle2, Trophy, Play, RotateCcw, Info, Target as GameIcon } from 'lucide-react'; // Added RotateCcw, Info, GameIcon
-import React, { useContext, useEffect, useState, useRef, useCallback } from 'react'; // Removed useMemo
+import { ArrowLeft, CheckCircle2, Trophy, Play, RotateCcw, Info, Target as GameIcon } from 'lucide-react';
+import React, { useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { ProgressContext } from '@/components/layout/MainLayout';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -98,7 +98,7 @@ export default function MiniGamePage() {
         const gameShouldBePaused = isGameActive && isPortrait && isLikelyMobile;
         setShowRotatePrompt(gameShouldBePaused);
 
-        if (canvasRef.current && isGameActive && !gameShouldBePaused) { // Resize canvas only if game is active and not paused for rotation
+        if (canvasRef.current && isGameActive && !gameShouldBePaused) { 
             const canvas = canvasRef.current;
             const dpr = window.devicePixelRatio || 1;
             canvas.width = window.innerWidth * dpr;
@@ -109,20 +109,19 @@ export default function MiniGamePage() {
             if (ctx) {
                 ctx.scale(dpr, dpr);
             }
-            // Game objects positions are relative to window.innerWidth/Height in the loop, so they adapt.
         }
     };
     
     window.addEventListener('resize', handleResizeOrOrientation);
     window.addEventListener('orientationchange', handleResizeOrOrientation);
     
-    handleResizeOrOrientation(); // Initial check
+    handleResizeOrOrientation(); 
 
     return () => {
         window.removeEventListener('resize', handleResizeOrOrientation);
         window.removeEventListener('orientationchange', handleResizeOrOrientation);
     };
-}, [isClient, isGameActive]); // Re-run if isGameActive changes to apply/remove listeners correctly
+}, [isClient, isGameActive]); 
 
   const resetGameState = useCallback(() => {
     setGameScore(0);
@@ -178,15 +177,15 @@ export default function MiniGamePage() {
         ctx.drawImage(game.backgroundImage, 0, 0, W, H);
     }
 
-    const bowHeight = H * 0.15;
+    const bowHeight = H * 0.18; // Increased from 0.15
     const bowWidth = bowHeight * (120 / 180); 
     const bowX = W * 0.10;
 
-    const targetHeight = H * 0.12;
+    const targetHeight = H * 0.15; // Increased from 0.12
     const targetWidth = targetHeight * (100 / 160); 
     const targetX = W * 0.85;
     
-    const arrowHeight = H * 0.06; 
+    const arrowHeight = H * 0.07; // Increased from 0.06
     const arrowWidth = arrowHeight * (150 / 20);
 
     if (game.bowY === undefined) game.bowY = H / 2;
@@ -357,7 +356,7 @@ export default function MiniGamePage() {
 
     resetGameState();
     setIsGameActive(true);
-    setIsGameOver(false); // Ensure game over is reset
+    setIsGameOver(false); 
     setSubmittedScoreDetails(null);
   };
 
@@ -368,7 +367,7 @@ export default function MiniGamePage() {
     if (game && game.bowY !== undefined) { 
       game.isArrowFlying = true;
       game.arrowY = game.bowY; 
-      game.arrowX = (window.innerWidth * 0.10) + ( (window.innerHeight * 0.15 * (120 / 180)) / 2 ); 
+      game.arrowX = (window.innerWidth * 0.10) + ( (window.innerHeight * 0.18 * (120 / 180)) / 2 );  // Adjusted 0.15 to 0.18 for bowHeight
       setArrowsLeft(prev => prev - 1);
     }
   }, [isGameActive, isGameOver, arrowsLeft, showRotatePrompt]); 
@@ -418,12 +417,11 @@ export default function MiniGamePage() {
   const handlePlayAgain = () => {
     setIsGameActive(false); 
     setIsGameOver(false); 
-    // resetGameState(); // Called by handleStartGameClick
   };
   
   const handleQuitGame = () => {
     setIsGameActive(false); 
-    setIsGameOver(true); // Go to submit screen
+    setIsGameOver(true); 
     if (gameScore > bestScore && gameId) {
         setBestScore(gameScore);
         localStorage.setItem(`bestScore_${gameId}`, gameScore.toString());
@@ -435,13 +433,12 @@ export default function MiniGamePage() {
     return <div className="text-center py-10"><h1 className="text-2xl font-bold text-destructive font-headline">Game not found!</h1><Button asChild className="mt-4"><Link href="/"><ArrowLeft className="mr-2 h-4 w-4" />Go back</Link></Button></div>;
   }
 
-  // Fullscreen game active view
   if (isGameActive && !isGameOver && !showRotatePrompt) { 
       return (
           <div 
             className="fixed inset-0 z-[60] bg-gray-800 cursor-pointer" 
             onClick={handleShoot} 
-            onTouchStart={handleShoot} // Added for touch devices
+            onTouchStart={(e) => { e.preventDefault(); handleShoot(); }}
           >
               <canvas ref={canvasRef} className="w-full h-full block outline-none" tabIndex={0} />
                <Button
@@ -460,7 +457,6 @@ export default function MiniGamePage() {
       );
   }
   
-  // Main page layout (pre-game, game over/submit, submitted)
   return (
     <div className="space-y-8 relative">
       {showRotatePrompt && <RotateDevicePrompt />}
@@ -548,7 +544,7 @@ export default function MiniGamePage() {
                   <Button asChild><Link href="/leaderboard">View Leaderboards</Link></Button>
                 </div>
               </div>
-            ) : ( // Pre-game view
+            ) : ( 
               <div className="space-y-6">
                 <Card className="p-6 bg-muted/50 rounded-lg">
                   <CardTitle className="text-xl mb-4 font-headline text-primary">Player Details</CardTitle>
@@ -579,3 +575,5 @@ export default function MiniGamePage() {
     </div>
   );
 }
+
+    

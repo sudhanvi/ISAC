@@ -88,7 +88,7 @@ export async function addScoreToLeaderboardAction(payload: AddScorePayload): Pro
     game_id: payload.gameId,
     game_name: game?.name || payload.gameId, // Use gameId as fallback for game_name
     score: payload.score,
-    submitted_timestamp: new Date().toISOString(), // Using ISO 8601 string format
+    submitted_timestamp: Date.now(), // Changed to Date.now() for bigint compatibility
   };
 
   console.log('[Server Action - addScoreToLeaderboardAction] Attempting to insert new entry:', JSON.stringify(newEntryData));
@@ -122,7 +122,7 @@ type SupabaseLeaderboardEntry = {
   game_id: string;
   game_name: string;
   score: number;
-  submitted_timestamp: string; // Assuming it comes as string if stored as TIMESTAMPTZ
+  submitted_timestamp: number; // Changed to number as it's stored as bigint (Date.now())
   created_at?: string;
 };
 
@@ -134,7 +134,7 @@ function mapSupabaseEntryToLeaderboardEntry(entry: SupabaseLeaderboardEntry): Le
     gameId: entry.game_id,
     gameName: entry.game_name,
     score: entry.score,
-    timestamp: new Date(entry.submitted_timestamp).getTime(), // Convert ISO string back to number
+    timestamp: entry.submitted_timestamp, // Directly use the number (milliseconds since epoch)
   };
 }
 
@@ -265,5 +265,4 @@ export async function getGroupLeaderboardAction(limit: number = 10): Promise<Gro
     throw new Error(`Failed to fetch group leaderboard due to an unexpected server error. Error: ${error.message || 'Unknown error'}`);
   }
 }
-
     

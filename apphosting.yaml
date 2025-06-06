@@ -1,18 +1,12 @@
+# apphosting.yaml
 
-# 1) Configure Cloud Run options (memory, CPU, scaling, etc.)
 runConfig:
-  # Minimum number of running instances (0 means auto –scale to zero)
   minInstances: 0
-  # Maximum number of instances it can scale up to
   maxInstances: 10
-  # How many concurrent requests an instance can handle
   concurrency: 80
-  # CPU per instance (1 vCPU)
   cpu: 1
-  # Memory per instance (512 MiB)
   memoryMiB: 512
 
-# 2) Define environment variables that come from Secret Manager
 env:
   - variable: SUPABASE_URL
     secret: SUPABASE_URL
@@ -23,24 +17,14 @@ env:
     availability:
       - RUNTIME
 
-# 3) (Optional) If you need plain-text env vars too, use `value:` instead of `secret:`
-#  - variable: OTHER_PLAIN_VAR
-#    value: "some-value"
-#    availability:
-#      - BUILD
-#      - RUNTIME
-
-# 4) Finally, set up rewrites so every request goes to your Cloud Run service
-#    (replace serviceId and region with your actual Cloud Run service name/region).
 rewrites:
   - source: "**"
     run:
       serviceId: YOUR_CLOUD_RUN_SERVICE_NAME
       region: us-central1
       platform: managed
-      # You can also set memory, cpu, scaling here instead of runConfig if you prefer:
-      # memory: "512Mi"
-      # cpu: 1
-      # minInstances: 0
-      # maxInstances: 10
-      # concurrency: 80
+      memory: "512Mi"
+      cpu: 1
+      minInstances: 0
+      maxInstances: 10
+      concurrency: 80

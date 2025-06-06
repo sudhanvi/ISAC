@@ -201,7 +201,7 @@ export default function MiniGamePage() {
     const bowWidth = bowHeight * (120 / 180); 
     const bowX = W * 0.10;
 
-    const targetHeight = H * 0.32.5; 
+    const targetHeight = H * 0.32; 
     const targetWidth = targetHeight * (100 / 160); 
     const targetX = W * 0.85;
     

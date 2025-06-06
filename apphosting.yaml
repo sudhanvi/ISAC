@@ -22,10 +22,14 @@ runConfig:
 # Environment variables and secrets
 # https://firebase.google.com/docs/app-hosting/configure-env
 env:
-  - variable: FIREBASE_SERVICE_ACCOUNT_JSON_STRING
-    secret: firebase-service-account-isac-studio # Make sure this matches the name of your secret in Secret Manager
+  - variable: SUPABASE_URL
+    secret: SUPABASE_URL # Secret ID in Google Cloud Secret Manager for your Supabase Project URL
     availability:
-      - RUNTIME # Only needed at runtime for the server actions to connect to Firestore
+      - RUNTIME
+  - variable: SUPABASE_ANON_KEY
+    secret: SUPABASE_ANON_KEY # Secret ID in Google Cloud Secret Manager for your Supabase Anon Public Key
+    availability:
+      - RUNTIME
 
   # Example of a plain text environment variable
   # - variable: MY_OTHER_VARIABLE
@@ -33,17 +37,3 @@ env:
   #   availability: # Optional: defaults to RUNTIME if not specified
   #     - BUILD
   #     - RUNTIME
-
-  # Example of another environment variable referencing a secret in Cloud Secret Manager
-  # - variable: ANOTHER_API_KEY
-  #   secret: anotherApiKeySecretName # Name of the secret in Secret Manager
-
-  # Example of a secret with a specific version
-  # - variable: PINNED_API_KEY
-  #   secret: myApiKeySecretName@5
-
-  # Example using the full secret path (useful if secret is in a different project)
-  # - variable: VERBOSE_API_KEY
-  #   secret: projects/your-gcp-project-id/secrets/yourSecretID
-  # - variable: PINNED_VERBOSE_API_KEY
-  #   secret: projects/your-gcp-project-id/secrets/yourSecretID/versions/5

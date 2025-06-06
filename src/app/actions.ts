@@ -3,130 +3,135 @@
 
 import type { LeaderboardEntry, PlayerLeaderboardItem, GroupLeaderboardItem } from '@/lib/data';
 import { miniGames, fanbaseMap } from '@/lib/data';
-import { initializeApp, getApps, cert, App } from 'firebase-admin/app';
-import { getFirestore, Firestore } from 'firebase-admin/firestore';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-let adminApp: App | undefined = undefined;
-let db: Firestore | undefined = undefined;
+let supabase: SupabaseClient | undefined = undefined;
+const LEADERBOARD_TABLE_NAME = 'leaderboard_entries_global';
 
-function initializeFirebaseAdmin() {
-  if (!getApps().length) {
-    console.log('actions.ts: No Firebase Admin apps initialized. Attempting initialization...');
+function initializeSupabase() {
+  if (!supabase) {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl) {
+      console.error('actions.ts: CRITICAL ERROR - SUPABASE_URL environment variable is not set. Ensure it is configured in apphosting.yaml and Secret Manager.');
+      return;
+    }
+    if (!supabaseAnonKey) {
+      console.error('actions.ts: CRITICAL ERROR - SUPABASE_ANON_KEY environment variable is not set. Ensure it is configured in apphosting.yaml and Secret Manager.');
+      return;
+    }
+
     try {
-      const serviceAccountJsonString = process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING;
-      if (serviceAccountJsonString) {
-        console.log('actions.ts: FIREBASE_SERVICE_ACCOUNT_JSON_STRING found. Attempting to parse and initialize.');
-        // Log a snippet to help verify if it's loaded, but be careful not to log the whole key.
-        console.log('actions.ts: Snippet of FIREBASE_SERVICE_ACCOUNT_JSON_STRING (first 50 chars, last 50 chars):', serviceAccountJsonString.substring(0,50), '...', serviceAccountJsonString.slice(-50));
-        try {
-          const serviceAccount = JSON.parse(serviceAccountJsonString);
-          adminApp = initializeApp({
-            credential: cert(serviceAccount),
-          });
-          console.log('actions.ts: Firebase Admin SDK initialized successfully using service account JSON string.');
-        } catch (parseError: any) {
-          console.error('actions.ts: CRITICAL ERROR parsing FIREBASE_SERVICE_ACCOUNT_JSON_STRING:', parseError.message, parseError.stack);
-          console.error('actions.ts: Ensure the content of the secret is a valid JSON service account key.');
-          adminApp = undefined; // Explicitly set to undefined on parse error
+      supabase = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          persistSession: false, // Recommended for server-side usage
         }
-      } else if (process.env.NODE_ENV === 'development' && process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-        console.log('actions.ts: NODE_ENV is development and GOOGLE_APPLICATION_CREDENTIALS found:', process.env.GOOGLE_APPLICATION_CREDENTIALS, '. Initializing with ADC for local dev.');
-        adminApp = initializeApp();
-        console.log('actions.ts: Firebase Admin SDK initialized successfully for local development using GOOGLE_APPLICATION_CREDENTIALS.');
-      } else {
-        console.log('actions.ts: FIREBASE_SERVICE_ACCOUNT_JSON_STRING is NOT set and not in local dev with GOOGLE_APPLICATION_CREDENTIALS. Attempting default ADC initialization (e.g., for App Hosting).');
-        adminApp = initializeApp(); // Relies on Application Default Credentials provided by the App Hosting environment
-        console.log('actions.ts: Firebase Admin SDK initialized successfully using Application Default Credentials (e.g., from App Hosting environment).');
-      }
+      });
+      console.log('actions.ts: Supabase client initialized successfully.');
     } catch (error: any) {
-      console.error('actions.ts: CRITICAL ERROR during Firebase Admin SDK initializeApp (outer try-catch):', error.message, error.stack);
-      if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING && !adminApp) { // Check if JSON string was present but initialization failed
-        console.error('actions.ts: Error occurred while attempting to use FIREBASE_SERVICE_ACCOUNT_JSON_STRING.');
-      } else if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON_STRING) {
-        console.error('actions.ts: Error occurred during default ADC initialization or local dev ADC. Ensure the runtime service account has permissions or GOOGLE_APPLICATION_CREDENTIALS is set correctly for local dev.');
-      }
-      adminApp = undefined;
+      console.error('actions.ts: CRITICAL ERROR during Supabase client creation:', error.message, error.stack);
+      supabase = undefined;
     }
-  } else {
-    adminApp = getApps()[0];
-    console.log('actions.ts: Firebase Admin app already initialized.');
-  }
-
-  if (adminApp && !db) {
-    try {
-      db = getFirestore(adminApp);
-      console.log('actions.ts: Firestore instance obtained successfully.');
-    } catch (error: any) {
-      console.error('actions.ts: CRITICAL ERROR obtaining Firestore instance:', error.message, error.stack);
-      console.error('actions.ts: This often means Firestore is not enabled in your Firebase project or the initialized app lacks permissions.');
-      db = undefined;
-    }
-  } else if (!adminApp) {
-    console.error('actions.ts: Cannot get Firestore instance because Firebase Admin App is not initialized.');
-    db = undefined;
   }
 }
 
-initializeFirebaseAdmin();
-
+initializeSupabase();
 
 export type AddScorePayload = {
   username: string;
-  group: string;
+  group: string; // This will be 'group_name' in the table
   gameId: string;
   score: number;
 };
 
-const LEADERBOARD_COLLECTION = 'leaderboardEntriesGlobal';
-
 export async function addScoreToLeaderboardAction(payload: AddScorePayload): Promise<void> {
   console.log('Server Action: addScoreToLeaderboardAction called with:', payload);
 
-  if (!db) {
-    console.error('addScoreToLeaderboardAction: Firestore is not initialized. Aborting score submission. This is a critical server configuration issue.');
-    // This error will be caught by the client and displayed in a toast
-    throw new Error('Server configuration error: Firestore not available. Score not submitted. Please check server logs.');
+  if (!supabase) {
+    console.error('addScoreToLeaderboardAction: Supabase client is not initialized. Aborting score submission. This is a critical server configuration issue.');
+    throw new Error('Server configuration error: Database client not available. Score not submitted. Please check server logs.');
   }
 
   const game = miniGames.find(g => g.id === payload.gameId);
   if (!game) {
     console.warn(`addScoreToLeaderboardAction: Game with id ${payload.gameId} not found in miniGames data. Using ID as name.`);
   }
+
   const newEntryData = {
     username: payload.username,
-    group: payload.group,
-    gameId: payload.gameId,
-    gameName: game?.name || payload.gameId,
+    group_name: payload.group, // Ensure this matches the column name in your Supabase table
+    game_id: payload.gameId,
+    game_name: game?.name || payload.gameId,
     score: payload.score,
-    timestamp: Date.now(),
+    submitted_timestamp: Date.now(), // Storing the submission time as a number
   };
 
   try {
-    const docRef = await db.collection(LEADERBOARD_COLLECTION).add(newEntryData);
-    console.log('Score added to Firestore with ID:', docRef.id);
+    const { error } = await supabase.from(LEADERBOARD_TABLE_NAME).insert([newEntryData]);
+
+    if (error) {
+      console.error('Error in addScoreToLeaderboardAction inserting to Supabase. Details:', error.message, error.stack);
+      throw new Error(`Failed to submit score. Database error: ${error.message}. Check table name, schema, and RLS policies in Supabase.`);
+    }
+    console.log('Score added to Supabase successfully.');
   } catch (error: any) {
-    console.error('Error in addScoreToLeaderboardAction adding to Firestore. Details:', error.message, error.stack, 'About to throw a new error to the client.');
-    // This refined error message will be shown in the client toast and Next.js dev overlay.
-    throw new Error('Failed to submit score. THIS IS LIKELY A SERVER CONFIGURATION ISSUE (e.g., Firestore not enabled, or problems with secrets/permissions). Check server logs for the root cause from Firebase/Firestore.');
+    // Catch any other unexpected errors during the operation
+    console.error('Unexpected error during Supabase insert operation:', error.message, error.stack);
+    throw new Error(error.message.startsWith('Failed to submit score.') ? error.message : 'Failed to submit score due to an unexpected server error. Check server logs.');
   }
+}
+
+// Type definition for the shape of data directly from Supabase
+type SupabaseLeaderboardEntry = {
+  id: number; // Assuming 'id' is a numeric primary key from Supabase
+  username: string;
+  group_name: string;
+  game_id: string;
+  game_name: string;
+  score: number;
+  submitted_timestamp: number; // Stored as bigint/number
+  created_at?: string; // Supabase might add this
+};
+
+// Helper to map Supabase entry to our internal LeaderboardEntry type used by components
+function mapSupabaseEntryToLeaderboardEntry(entry: SupabaseLeaderboardEntry): LeaderboardEntry {
+  return {
+    id: entry.id.toString(),
+    username: entry.username,
+    group: entry.group_name, // Map 'group_name' from DB back to 'group' for consistency
+    gameId: entry.game_id,
+    gameName: entry.game_name,
+    score: entry.score,
+    timestamp: entry.submitted_timestamp,
+  };
 }
 
 export async function getPlayerLeaderboardAction(limit: number = 10): Promise<PlayerLeaderboardItem[]> {
   console.log('Server Action: getPlayerLeaderboardAction called');
-  if (!db) {
-    console.error('getPlayerLeaderboardAction: Firestore is not initialized. Returning empty leaderboard. This is a critical server configuration issue.');
+  if (!supabase) {
+    console.error('getPlayerLeaderboardAction: Supabase client is not initialized. Returning empty leaderboard. This is a critical server configuration issue.');
     return [];
   }
 
   try {
-    const snapshot = await db.collection(LEADERBOARD_COLLECTION)
-      .orderBy('score', 'desc')
-      .orderBy('timestamp', 'asc')
-      .limit(100) // Fetch more initially to allow for aggregation
-      .get();
+    const { data, error } = await supabase
+      .from(LEADERBOARD_TABLE_NAME) // Using SupabaseLeaderboardEntry for type safety with select
+      .select('id, username, group_name, game_id, game_name, score, submitted_timestamp')
+      .order('score', { ascending: false })
+      .order('submitted_timestamp', { ascending: true }) // Older scores of same value rank higher
+      .limit(200); // Fetch more for aggregation logic
 
-    const entries: LeaderboardEntry[] = [];
-    snapshot.forEach(doc => entries.push({ id: doc.id, ...doc.data() } as LeaderboardEntry));
+    if (error) {
+      console.error('Error fetching player data from Supabase:', error.message);
+      return [];
+    }
+    if (!data) {
+      console.log('No data returned for player leaderboard from Supabase.');
+      return [];
+    }
+    
+    const entries: LeaderboardEntry[] = (data as SupabaseLeaderboardEntry[]).map(mapSupabaseEntryToLeaderboardEntry);
 
     const players: Record<string, PlayerLeaderboardItem> = {};
     entries.forEach(entry => {
@@ -143,11 +148,8 @@ export async function getPlayerLeaderboardAction(limit: number = 10): Promise<Pl
 
     const sortedPlayers = Object.values(players)
       .sort((a, b) => {
-        // Primary sort: totalScore descending
         if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
-        // Secondary sort: highestScore descending (as a tie-breaker)
         if (b.highestScore !== a.highestScore) return b.highestScore - a.highestScore;
-        // Tertiary sort: gamesPlayed ascending (fewer games to reach score is better)
         return a.gamesPlayed - b.gamesPlayed;
       })
       .slice(0, limit);
@@ -156,33 +158,43 @@ export async function getPlayerLeaderboardAction(limit: number = 10): Promise<Pl
     return sortedPlayers;
 
   } catch (error: any) {
-    console.error('Error in getPlayerLeaderboardAction fetching from Firestore:', error.message, error.stack);
-    return []; // Return empty on error
+    console.error('Error in getPlayerLeaderboardAction with Supabase:', error.message, error.stack);
+    return [];
   }
 }
 
 export async function getGroupLeaderboardAction(limit: number = 10): Promise<GroupLeaderboardItem[]> {
   console.log('Server Action: getGroupLeaderboardAction called');
-   if (!db) {
-    console.error('getGroupLeaderboardAction: Firestore is not initialized. Returning empty leaderboard. This is a critical server configuration issue.');
+   if (!supabase) {
+    console.error('getGroupLeaderboardAction: Supabase client is not initialized. Returning empty leaderboard. This is a critical server configuration issue.');
     return [];
   }
   try {
-    const snapshot = await db.collection(LEADERBOARD_COLLECTION)
-      .orderBy('score', 'desc') // Fetch a larger set for aggregation
-      .orderBy('timestamp', 'asc')
-      .limit(200) // Fetch more for accurate group aggregation
-      .get();
+    const { data, error } = await supabase
+      .from(LEADERBOARD_TABLE_NAME) // Using SupabaseLeaderboardEntry for type safety with select
+      .select('id, username, group_name, game_id, game_name, score, submitted_timestamp')
+      .order('score', { ascending: false })
+      .order('submitted_timestamp', { ascending: true })
+      .limit(300); // Fetch more for accurate group aggregation
 
-    const entries: LeaderboardEntry[] = [];
-    snapshot.forEach(doc => entries.push({ id: doc.id, ...doc.data() } as LeaderboardEntry));
+    if (error) {
+      console.error('Error fetching group data from Supabase:', error.message);
+      return [];
+    }
+     if (!data) {
+      console.log('No data returned for group leaderboard from Supabase.');
+      return [];
+    }
+
+    const entries: LeaderboardEntry[] = (data as SupabaseLeaderboardEntry[]).map(mapSupabaseEntryToLeaderboardEntry);
 
     const groups: Record<string, GroupLeaderboardItem> = {};
     entries.forEach(entry => {
-      if (!groups[entry.group]) {
-        groups[entry.group] = {
-          groupName: entry.group,
-          fanbaseName: fanbaseMap[entry.group] || null, // Get fanbase name
+      const groupKey = entry.group; // Using the mapped 'group' field which comes from 'group_name'
+      if (!groups[groupKey]) {
+        groups[groupKey] = {
+          groupName: groupKey,
+          fanbaseName: fanbaseMap[groupKey] || null,
           totalScore: 0,
           gamesPlayed: 0,
           highestScore: 0,
@@ -190,22 +202,19 @@ export async function getGroupLeaderboardAction(limit: number = 10): Promise<Gro
           highestScoreGame: ''
         };
       }
-      groups[entry.group].totalScore += entry.score;
-      groups[entry.group].gamesPlayed += 1;
-      if (entry.score > groups[entry.group].highestScore) {
-        groups[entry.group].highestScore = entry.score;
-        groups[entry.group].highestScorePlayer = entry.username;
-        groups[entry.group].highestScoreGame = entry.gameName;
+      groups[groupKey].totalScore += entry.score;
+      groups[groupKey].gamesPlayed += 1;
+      if (entry.score > groups[groupKey].highestScore) {
+        groups[groupKey].highestScore = entry.score;
+        groups[groupKey].highestScorePlayer = entry.username;
+        groups[groupKey].highestScoreGame = entry.gameName;
       }
     });
 
     const sortedGroups = Object.values(groups)
       .sort((a, b) => {
-        // Primary sort: totalScore descending
         if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
-        // Secondary sort: highestScore descending (as a tie-breaker)
         if (b.highestScore !== a.highestScore) return b.highestScore - a.highestScore;
-        // Tertiary sort: gamesPlayed ascending (fewer games to reach score is better)
         return a.gamesPlayed - b.gamesPlayed;
       })
       .slice(0, limit);
@@ -213,7 +222,7 @@ export async function getGroupLeaderboardAction(limit: number = 10): Promise<Gro
     console.log(`Returning ${sortedGroups.length} groups for leaderboard.`);
     return sortedGroups;
   } catch (error: any) {
-    console.error('Error in getGroupLeaderboardAction fetching from Firestore:', error.message, error.stack);
-    return []; // Return empty on error
+    console.error('Error in getGroupLeaderboardAction with Supabase:', error.message, error.stack);
+    return [];
   }
 }

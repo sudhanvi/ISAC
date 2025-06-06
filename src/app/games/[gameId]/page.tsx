@@ -7,8 +7,8 @@ import { addScoreToLeaderboardAction, AddScorePayload } from '@/app/actions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle2, Trophy, Play, RotateCcw, Target as GameIcon, Info } from 'lucide-react';
-import React, { useContext, useEffect, useState, useRef, useCallback } from 'react';
+import { ArrowLeft, CheckCircle2, Trophy, Play, RotateCcw, Info, Target as GameIcon } from 'lucide-react'; // Added RotateCcw, Info, GameIcon
+import React, { useContext, useEffect, useState, useRef, useCallback } from 'react'; // Removed useMemo
 import { ProgressContext } from '@/components/layout/MainLayout';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,8 +29,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import RotateDevicePrompt from '@/components/RotateDevicePrompt';
 
-
-// Game specific constants (Example for Archery)
+// Game specific constants
 const ARROW_SPEED = 25;
 const BOW_SPEED = 2;
 const TARGET_SPEED = 3;
@@ -43,7 +42,7 @@ export default function MiniGamePage() {
   const progressContext = useContext(ProgressContext);
   const { toast } = useToast();
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const gameInstanceRef = useRef<{
     animationFrameId?: number;
     bowY?: number;
@@ -64,12 +63,13 @@ export default function MiniGamePage() {
   const [username, setUsername] = useState('');
   const [selectedGroup, setSelectedGroup] = useState('');
   const [newGroup, setNewGroup] = useState('');
-
-  const [score, setScore] = useState(0);
+  
+  const [gameScore, setGameScore] = useState(0);
   const [arrowsLeft, setArrowsLeft] = useState(INITIAL_ARROWS);
-  const [bestScore, setBestScore] = useState(0);
+  const [bestScore, setBestScore] = useState(0); // Personal best for this game
+
   const [isGameActive, setIsGameActive] = useState(false);
-  const [isGameOver, setIsGameOver] = useState(false);
+  const [isGameOver, setIsGameOver] = useState(false); // Separate from isGameActive
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedScoreDetails, setSubmittedScoreDetails] = useState<{ score: number; username: string; group: string } | null>(null);
   const [showRotatePrompt, setShowRotatePrompt] = useState(false);
@@ -84,38 +84,74 @@ export default function MiniGamePage() {
       if (kpopGroups.includes(storedGroup)) setSelectedGroup(storedGroup);
       else setNewGroup(storedGroup);
     }
-    setBestScore(parseInt(localStorage.getItem(`bestScore_${gameId}`) || '0'));
+    if (gameId) {
+        setBestScore(parseInt(localStorage.getItem(`bestScore_${gameId}`) || '0'));
+    }
   }, [gameId]);
 
-   const resetGameState = useCallback(() => {
-    setScore(0);
+ useEffect(() => {
+    if (!isClient) return;
+
+    const handleResizeOrOrientation = () => {
+        const isPortrait = window.innerHeight > window.innerWidth;
+        const isLikelyMobile = window.matchMedia("(max-width: 767px)").matches;
+        const gameShouldBePaused = isGameActive && isPortrait && isLikelyMobile;
+        setShowRotatePrompt(gameShouldBePaused);
+
+        if (canvasRef.current && isGameActive && !gameShouldBePaused) { // Resize canvas only if game is active and not paused for rotation
+            const canvas = canvasRef.current;
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+            canvas.style.width = `${window.innerWidth}px`;
+            canvas.style.height = `${window.innerHeight}px`;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.scale(dpr, dpr);
+            }
+            // Game objects positions are relative to window.innerWidth/Height in the loop, so they adapt.
+        }
+    };
+    
+    window.addEventListener('resize', handleResizeOrOrientation);
+    window.addEventListener('orientationchange', handleResizeOrOrientation);
+    
+    handleResizeOrOrientation(); // Initial check
+
+    return () => {
+        window.removeEventListener('resize', handleResizeOrOrientation);
+        window.removeEventListener('orientationchange', handleResizeOrOrientation);
+    };
+}, [isClient, isGameActive]); // Re-run if isGameActive changes to apply/remove listeners correctly
+
+  const resetGameState = useCallback(() => {
+    setGameScore(0);
     setArrowsLeft(INITIAL_ARROWS);
     setIsGameOver(false);
     setSubmittedScoreDetails(null);
     
-    // Initialize game instance properties needed before the game loop starts
-    // Positions will be set precisely in the game initialization effect.
     gameInstanceRef.current = {
-        // Keep existing images if they were loaded, otherwise they are undefined
         backgroundImage: gameInstanceRef.current?.backgroundImage,
         bowImage: gameInstanceRef.current?.bowImage,
         targetImage: gameInstanceRef.current?.targetImage,
         arrowImage: gameInstanceRef.current?.arrowImage,
-        bowY: undefined, // Will be set based on canvas height
-        bowDY: BOW_SPEED, // Critical to reset speed
-        targetY: undefined, // Will be set based on canvas height
-        targetDY: TARGET_SPEED, // Critical to reset speed
+        bowY: undefined, 
+        bowDY: BOW_SPEED, 
+        targetY: undefined, 
+        targetDY: TARGET_SPEED, 
         arrowX: undefined,
         arrowY: undefined,
         isArrowFlying: false,
         bowSpeedIncremented: false,
         animationFrameId: undefined,
     };
-  }, []); // Dependencies: setScore, setArrowsLeft, setIsGameOver, setSubmittedScoreDetails are stable setters from useState
+  }, []);
 
 
   const actualGameLoop = useCallback(() => {
-    if (!isGameActive || isGameOver || !canvasRef.current || !gameInstanceRef.current) {
+    const gameCurrentlyActive = !isGameOver && isGameActive && !showRotatePrompt;
+
+    if (!gameCurrentlyActive || !canvasRef.current || !gameInstanceRef.current) {
       if (gameInstanceRef.current?.animationFrameId) {
         cancelAnimationFrame(gameInstanceRef.current.animationFrameId);
         gameInstanceRef.current.animationFrameId = undefined;
@@ -129,38 +165,35 @@ export default function MiniGamePage() {
 
     if (!ctx) {
       console.error("Context not available in game loop");
-      setIsGameActive(false); // Stop the game
+      setIsGameActive(false); 
       return;
     }
     
-    // Use logical pixel dimensions for game logic
     const W = window.innerWidth;
     const H = window.innerHeight;
 
-    ctx.clearRect(0, 0, W, H); // Clear using logical dimensions
+    ctx.clearRect(0, 0, W, H);
 
     if (game.backgroundImage) {
         ctx.drawImage(game.backgroundImage, 0, 0, W, H);
     }
 
     const bowHeight = H * 0.15;
-    const bowWidth = bowHeight * (120 / 180); // aspect ratio 120/180
+    const bowWidth = bowHeight * (120 / 180); 
     const bowX = W * 0.10;
 
     const targetHeight = H * 0.12;
-    const targetWidth = targetHeight * (100 / 160); // aspect ratio 100/160
+    const targetWidth = targetHeight * (100 / 160); 
     const targetX = W * 0.85;
     
-    const arrowHeight = H * 0.06; // Arrow sprite is thinner
-    const arrowWidth = arrowHeight * (150 / 20); // aspect ratio 150/20
+    const arrowHeight = H * 0.06; 
+    const arrowWidth = arrowHeight * (150 / 20);
 
-    // Initialize positions if undefined (first frame after image load)
     if (game.bowY === undefined) game.bowY = H / 2;
     if (game.targetY === undefined) game.targetY = H / 2;
     
-    // Bow movement
     let currentBowSpeed = BOW_SPEED * (game.bowSpeedIncremented ? 1.5 : 1);
-    if (game.bowDY === undefined || game.bowDY === 0) game.bowDY = BOW_SPEED; // Ensure direction/speed
+    if (game.bowDY === undefined || game.bowDY === 0) game.bowDY = BOW_SPEED;
     game.bowDY = Math.sign(game.bowDY) * currentBowSpeed;
     
     game.bowY += game.bowDY;
@@ -169,28 +202,23 @@ export default function MiniGamePage() {
     }
     if (game.bowImage) ctx.drawImage(game.bowImage, bowX, game.bowY - bowHeight / 2, bowWidth, bowHeight);
 
-    // Target movement
-    if (game.targetDY === undefined || game.targetDY === 0) game.targetDY = TARGET_SPEED; // Ensure direction/speed
+    if (game.targetDY === undefined || game.targetDY === 0) game.targetDY = TARGET_SPEED;
     game.targetY += game.targetDY;
     if (game.targetY + targetHeight / 2 > H * 0.9 || game.targetY - targetHeight / 2 < H * 0.1) {
       game.targetDY *= -1;
     }
     if (game.targetImage) ctx.drawImage(game.targetImage, targetX - targetWidth / 2, game.targetY - targetHeight / 2, targetWidth, targetHeight);
 
-    // Arrow logic
     if (game.isArrowFlying) {
-      if (game.arrowX === undefined) game.arrowX = bowX + bowWidth; // Start arrow from bow
-      // game.arrowY is set at the moment of shooting by handleShoot
-      
+      if (game.arrowX === undefined) game.arrowX = bowX + bowWidth;
       game.arrowX += ARROW_SPEED;
 
-      // Collision detection
       if (game.arrowX > targetX - targetWidth / 2 && game.arrowX < targetX + targetWidth/2 &&
           game.arrowY && game.arrowY > game.targetY - targetHeight / 2 && game.arrowY < game.targetY + targetHeight / 2) {
         const offset = Math.abs(game.arrowY - game.targetY);
-        const points = Math.max(0, 10 - Math.floor(offset / (targetHeight / 20))); // Points based on accuracy
+        const points = Math.max(0, 10 - Math.floor(offset / (targetHeight / 20))); 
         
-        setScore(prev => {
+        setGameScore(prev => {
           const newScore = prev + points;
           if (newScore > 20 && !gameInstanceRef.current.bowSpeedIncremented) {
               gameInstanceRef.current.bowSpeedIncremented = true;
@@ -198,59 +226,55 @@ export default function MiniGamePage() {
           return newScore;
         });
 
-        if (points >= 9) { // Bullseye bonus
+        if (points >= 9) { 
           setArrowsLeft(prev => prev + 2);
         }
-        gameInstanceRef.current.isArrowFlying = false; // Arrow hit, stop flying
+        gameInstanceRef.current.isArrowFlying = false; 
       }
 
-      // Arrow missed and off-screen
       if (game.arrowX > W) {
         gameInstanceRef.current.isArrowFlying = false;
       }
-    } else { // Arrow is nocked
+    } else { 
       game.arrowX = bowX + bowWidth / 2; 
-      if(game.bowY) game.arrowY = game.bowY; // Follow bow's Y position
+      if(game.bowY) game.arrowY = game.bowY; 
     }
 
-    if (game.isArrowFlying && game.arrowImage && game.arrowY) { // Draw flying arrow
+    if (game.isArrowFlying && game.arrowImage && game.arrowY) { 
        ctx.drawImage(game.arrowImage, game.arrowX, game.arrowY - arrowHeight / 2, arrowWidth, arrowHeight);
     }
 
-    // Draw UI
     ctx.fillStyle = 'white';
     ctx.font = 'bold 24px Poppins';
     ctx.shadowColor = 'black';
     ctx.shadowBlur = 5;
     ctx.textAlign = 'left';
-    ctx.fillText(`Score: ${score}`, 20, 40);
+    ctx.fillText(`Score: ${gameScore}`, 20, 40);
     ctx.fillText(`Arrows: ${arrowsLeft}`, 20, 70);
     ctx.textAlign = 'right';
     ctx.fillText(`Best: ${bestScore}`, W - 20, 40);
     ctx.shadowBlur = 0;
 
-    // Game Over condition
     if (arrowsLeft <= 0 && !gameInstanceRef.current.isArrowFlying && !isGameOver) {
       setIsGameOver(true);
-      setIsGameActive(false); // This will stop the loop via the check at the top
-      if (score > bestScore) {
-        setBestScore(score);
-        localStorage.setItem(`bestScore_${gameId}`, score.toString());
+      setIsGameActive(false); 
+      if (gameScore > bestScore) {
+        setBestScore(gameScore);
+        if(gameId) localStorage.setItem(`bestScore_${gameId}`, gameScore.toString());
       }
       toast({
         title: "Game Over!",
-        description: `You scored ${score} points. ${score > bestScore ? "That's a new personal best!" : ""}`,
+        description: `You scored ${gameScore} points. ${gameScore > bestScore ? "That's a new personal best!" : ""}`,
       });
     } else {
       gameInstanceRef.current.animationFrameId = requestAnimationFrame(actualGameLoop);
     }
-  }, [isGameActive, isGameOver, score, arrowsLeft, bestScore, gameId, toast, setIsGameActive, setIsGameOver, setScore, setArrowsLeft, setBestScore]);
+  }, [isGameActive, isGameOver, gameScore, arrowsLeft, bestScore, gameId, toast, showRotatePrompt]);
 
 
-  // Effect for game initialization (canvas setup, asset loading, starting loop)
   useEffect(() => {
-    if (isGameActive && !isGameOver && canvasRef.current && isClient) {
-      const game = gameInstanceRef.current; // Already initialized by resetGameState
+    if (isGameActive && !isGameOver && !showRotatePrompt && canvasRef.current && isClient) {
+      const game = gameInstanceRef.current; 
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
 
@@ -261,7 +285,6 @@ export default function MiniGamePage() {
         return;
       }
 
-      // Setup canvas dimensions and scaling
       const dpr = window.devicePixelRatio || 1;
       canvas.width = window.innerWidth * dpr;
       canvas.height = window.innerHeight * dpr;
@@ -279,7 +302,6 @@ export default function MiniGamePage() {
           img.src = src;
       });
 
-      // Load assets then start game loop
       Promise.all([
           loadImage('/assets/stadium-background.png'),
           loadImage('/assets/bow-sprite.png'),
@@ -291,84 +313,35 @@ export default function MiniGamePage() {
           game.targetImage = targetImg;
           game.arrowImage = arrowImg;
 
-          // Initial positions based on current screen size
           const H_logical = window.innerHeight;
           game.bowY = H_logical / 2;
           game.targetY = H_logical / 2;
           if (game.bowDY === undefined || game.bowDY === 0) game.bowDY = BOW_SPEED;
           if (game.targetDY === undefined || game.targetDY === 0) game.targetDY = TARGET_SPEED;
 
-
-          if (gameInstanceRef.current && isGameActive && !isGameOver) { // Check again before starting loop
+          if (gameInstanceRef.current && isGameActive && !isGameOver && !showRotatePrompt) { 
             gameInstanceRef.current.animationFrameId = requestAnimationFrame(actualGameLoop);
           }
       }).catch(err => {
           console.error("Failed to load game assets:", err);
           toast({title: "Asset Loading Error", description: String(err) || "Could not load game assets. Please try refreshing.", variant: "destructive", duration: 7000});
-          setIsGameActive(false); // Stop game if assets fail
+          setIsGameActive(false); 
       });
 
-      return () => { // Cleanup function for this effect
+      return () => { 
         if (gameInstanceRef.current?.animationFrameId) {
           cancelAnimationFrame(gameInstanceRef.current.animationFrameId);
           gameInstanceRef.current.animationFrameId = undefined;
         }
       };
-    } else if ((!isGameActive || isGameOver) && gameInstanceRef.current?.animationFrameId) {
-      // If game becomes inactive or over, ensure loop is stopped
+    } else if ((!isGameActive || isGameOver || showRotatePrompt) && gameInstanceRef.current?.animationFrameId) {
       cancelAnimationFrame(gameInstanceRef.current.animationFrameId);
       gameInstanceRef.current.animationFrameId = undefined;
     }
-  }, [isGameActive, isGameOver, isClient, toast, setIsGameActive, actualGameLoop]); // actualGameLoop is a dependency
-
-  // Effect for handling resize and orientation changes WHILE game is active
-  useEffect(() => {
-      if (!isClient || !isGameActive || !canvasRef.current) return;
-
-      const handleResizeOrOrientation = () => {
-          const canvas = canvasRef.current;
-          if (!canvas) return;
-          
-          const dpr = window.devicePixelRatio || 1;
-          canvas.width = window.innerWidth * dpr;
-          canvas.height = window.innerHeight * dpr;
-          canvas.style.width = `${window.innerWidth}px`;
-          canvas.style.height = `${window.innerHeight}px`;
-          
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.scale(dpr, dpr); // Scale context for HiDPI rendering
-          }
-          // Game objects might need repositioning if their logic doesn't adapt to W/H changes in the loop
-          // The current loop re-calculates sizes based on H, so it should adapt somewhat.
-          // Explicitly re-initialize bow/target Y if needed, or ensure loop does it.
-          if (gameInstanceRef.current) {
-            const H_logical = window.innerHeight;
-            // gameInstanceRef.current.bowY = H_logical / 2; // Optional: recenter on resize
-            // gameInstanceRef.current.targetY = H_logical / 2;
-          }
-      };
-      
-      const handleOrientationSpecifics = () => {
-          const isPortrait = window.innerHeight > window.innerWidth;
-          const isLikelyMobile = window.matchMedia("(max-width: 767px)").matches;
-          setShowRotatePrompt(isGameActive && isPortrait && isLikelyMobile);
-          setTimeout(handleResizeOrOrientation, 50); 
-      };
-
-      window.addEventListener('resize', handleOrientationSpecifics); // Use one handler that calls both
-      window.addEventListener('orientationchange', handleOrientationSpecifics);
-      
-      handleOrientationSpecifics(); // Initial check
-
-      return () => {
-          window.removeEventListener('resize', handleOrientationSpecifics);
-          window.removeEventListener('orientationchange', handleOrientationSpecifics);
-      };
-  }, [isClient, isGameActive]);
+  }, [isGameActive, isGameOver, isClient, toast, actualGameLoop, showRotatePrompt]);
 
 
-  const startGame = () => {
+  const handleStartGameClick = () => {
     const finalGroup = newGroup.trim() || selectedGroup;
     if (!username.trim()) {
       toast({ title: "Details Needed", description: "Please enter your X username.", variant: "destructive" });
@@ -382,24 +355,26 @@ export default function MiniGamePage() {
     localStorage.setItem('isacStudioUsername', username.trim());
     localStorage.setItem('isacStudioGroup', finalGroup);
 
-    resetGameState(); // Resets scores, arrows, and gameInstanceRef properties
-    setIsGameActive(true); // This will trigger the game initialization useEffect
+    resetGameState();
+    setIsGameActive(true);
+    setIsGameOver(false); // Ensure game over is reset
+    setSubmittedScoreDetails(null);
   };
 
   const handleShoot = useCallback(() => {
-    if (!isGameActive || isGameOver || gameInstanceRef.current?.isArrowFlying || arrowsLeft <= 0) return;
+    if (!isGameActive || isGameOver || gameInstanceRef.current?.isArrowFlying || arrowsLeft <= 0 || showRotatePrompt) return;
 
     const game = gameInstanceRef.current;
     if (game && game.bowY !== undefined) { 
       game.isArrowFlying = true;
       game.arrowY = game.bowY; 
-      game.arrowX = (window.innerWidth * 0.10) + ( (window.innerHeight * 0.15 * (120 / 180)) / 2 ); // Recalculate arrow start X
+      game.arrowX = (window.innerWidth * 0.10) + ( (window.innerHeight * 0.15 * (120 / 180)) / 2 ); 
       setArrowsLeft(prev => prev - 1);
     }
-  }, [isGameActive, isGameOver, arrowsLeft]); 
+  }, [isGameActive, isGameOver, arrowsLeft, showRotatePrompt]); 
 
   useEffect(() => {
-    if (!isGameActive) return; 
+    if (!isGameActive || showRotatePrompt) return; 
 
     const handleKeyPress = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
@@ -409,29 +384,29 @@ export default function MiniGamePage() {
     };
     document.addEventListener('keydown', handleKeyPress);
     return () => document.removeEventListener('keydown', handleKeyPress);
-  }, [isGameActive, handleShoot]); 
+  }, [isGameActive, handleShoot, showRotatePrompt]); 
 
 
   const handleScoreSubmit = async () => {
     const finalUsername = username.trim();
     const finalGroup = (newGroup.trim() || selectedGroup).trim();
 
-    if (!finalUsername || !finalGroup || score < 0) { 
+    if (!finalUsername || !finalGroup || gameScore < 0) { 
       toast({ title: "Validation Error", description: "Please ensure username, group, and score are valid.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
     try {
-      const payload: AddScorePayload = { username: finalUsername, group: finalGroup, gameId, score }; 
+      const payload: AddScorePayload = { username: finalUsername, group: finalGroup, gameId: gameId!, score: gameScore }; 
       await addScoreToLeaderboardAction(payload);
-      if (progressContext && !progressContext.isGameCompleted(gameId)) {
+      if (progressContext && gameId && !progressContext.isGameCompleted(gameId)) {
         progressContext.completeGame(gameId);
       }
-      setSubmittedScoreDetails({ score, username: finalUsername, group: finalGroup }); 
-      toast({ title: "Score Submitted!", description: `Your score of ${score} has been recorded.`, className: "bg-green-500 text-white" });
+      setSubmittedScoreDetails({ score: gameScore, username: finalUsername, group: finalGroup }); 
+      toast({ title: "Score Submitted!", description: `Your score of ${gameScore} has been recorded.`, className: "bg-green-500 text-white" });
     } catch (error: any) {
       console.error("Failed to submit score:", error);
-      const serverErrorMessage = error.message && error.message.includes("Database client not available") // Simplified check
+      const serverErrorMessage = error.message && error.message.includes("Database client not available")
         ? "Could not connect to the leaderboard server. Please try again later."
         : error.message || "Could not submit score.";
       toast({ title: "Submission Error", description: serverErrorMessage, variant: "destructive", duration: 7000 });
@@ -441,19 +416,17 @@ export default function MiniGamePage() {
   };
 
   const handlePlayAgain = () => {
-    setIsGameActive(false); // This will stop the loop via useEffect cleanup
+    setIsGameActive(false); 
     setIsGameOver(false); 
-    // resetGameState(); // Called by startGame when user clicks "Start Game" again
-    // No need to explicitly cancel animation frame here, useEffect cleanup for isGameActive handles it.
+    // resetGameState(); // Called by handleStartGameClick
   };
-
+  
   const handleQuitGame = () => {
-    setIsGameActive(false); // This stops the game loop.
-    setIsGameOver(true); // To show submission UI.
-     // No need to explicitly cancel animation frame here, useEffect cleanup for isGameActive handles it.
-    if (score > bestScore) {
-        setBestScore(score);
-        localStorage.setItem(`bestScore_${gameId}`, score.toString());
+    setIsGameActive(false); 
+    setIsGameOver(true); // Go to submit screen
+    if (gameScore > bestScore && gameId) {
+        setBestScore(gameScore);
+        localStorage.setItem(`bestScore_${gameId}`, gameScore.toString());
     }
   };
 
@@ -462,14 +435,15 @@ export default function MiniGamePage() {
     return <div className="text-center py-10"><h1 className="text-2xl font-bold text-destructive font-headline">Game not found!</h1><Button asChild className="mt-4"><Link href="/"><ArrowLeft className="mr-2 h-4 w-4" />Go back</Link></Button></div>;
   }
 
-  if (isGameActive) { 
+  // Fullscreen game active view
+  if (isGameActive && !isGameOver && !showRotatePrompt) { 
       return (
           <div 
-            className="fixed inset-0 z-[60] bg-gray-800 cursor-pointer" // Changed background for better visibility if canvas transparent
+            className="fixed inset-0 z-[60] bg-gray-800 cursor-pointer" 
             onClick={handleShoot} 
+            onTouchStart={handleShoot} // Added for touch devices
           >
               <canvas ref={canvasRef} className="w-full h-full block outline-none" tabIndex={0} />
-              {showRotatePrompt && <RotateDevicePrompt />}
                <Button
                   variant="ghost"
                   size="icon"
@@ -478,117 +452,130 @@ export default function MiniGamePage() {
                       handleQuitGame();
                   }}
                   className="absolute top-4 right-4 z-[70] bg-black/40 hover:bg-black/60 text-white rounded-full p-2"
-                  title="Quit Game"
+                  title="Quit Game & Submit Score"
               >
                   <RotateCcw className="h-5 w-5" /> 
               </Button>
           </div>
       );
   }
-
+  
+  // Main page layout (pre-game, game over/submit, submitted)
   return (
-    <div className="space-y-8">
-      <Button variant="outline" asChild className="mb-6 group">
-        <Link href="/"><ArrowLeft className="mr-2 h-4 w-4 transition-transform group-hover:-translate-x-1" />Back to All Games</Link>
-      </Button>
+    <div className="space-y-8 relative">
+      {showRotatePrompt && <RotateDevicePrompt />}
+      <div className={showRotatePrompt ? 'opacity-20 pointer-events-none blur-sm' : ''}>
+        <Button variant="outline" asChild className="mb-6 group">
+          <Link href="/">
+            <ArrowLeft className="mr-2 h-4 w-4 transition-transform group-hover:-translate-x-1" />
+            Back to All Games
+          </Link>
+        </Button>
 
-      <Card className="overflow-hidden shadow-xl rounded-xl">
-         <CardHeader className="p-0 relative">
-          <div className="relative w-full h-64 md:h-80">
-            <Image src="/assets/banner.png" alt="Game Banner" layout="fill" objectFit="cover" data-ai-hint="game banner" priority />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-          </div>
-          <div className="absolute bottom-0 left-0 p-6 flex items-end space-x-4">
-            <gameDetails.icon className="h-12 w-12 text-white drop-shadow-lg" />
-            <div>
-              <CardTitle className="font-headline text-4xl text-white drop-shadow-md">{gameDetails.name}</CardTitle>
-              <CardDescription className="text-gray-200 text-lg drop-shadow-sm">{gameDetails.description}</CardDescription>
+        <Card className="overflow-hidden shadow-xl rounded-xl">
+          <CardHeader className="p-0 relative">
+            <div className="relative w-full h-64 md:h-80">
+              <Image
+                src="/assets/banner.png"
+                alt="Game Banner"
+                layout="fill"
+                objectFit="cover"
+                data-ai-hint="game banner"
+                priority
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
             </div>
-          </div>
-           <AlertDialog>
-              <AlertDialogTrigger asChild>
-                  <Button variant="ghost" size="icon" className="absolute top-4 right-4 text-white hover:bg-white/20 rounded-full p-2">
-                      <Info className="h-5 w-5" />
-                  </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                  <AlertDialogHeader>
-                  <AlertDialogTitle>How to Play: {gameDetails.name}</AlertDialogTitle>
-                  <AlertDialogDescription className="text-left space-y-2 pt-2">
-                      <p>Welcome to {gameDetails.name}!</p>
-                      <p><strong>Objective:</strong> Score as many points as possible by hitting the target with your arrows.</p>
-                      <p><strong>Controls:</strong> Click or tap anywhere on the game screen, or press the <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Spacebar</kbd> to shoot an arrow.</p>
-                      <p><strong>Gameplay:</strong></p>
-                      <ul className="list-disc list-inside pl-4 space-y-1">
-                      <li>The bow moves up and down automatically. Time your shot!</li>
-                      <li>The target also moves up and down.</li>
-                      <li>You start with {INITIAL_ARROWS} arrows.</li>
-                      <li>Hitting the bullseye (9-10 points) awards you +2 bonus arrows.</li>
-                      <li>The game ends when you run out of arrows.</li>
-                      </ul>
-                      <p>For the best experience, play in landscape mode on mobile devices.</p>
-                  </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                  <AlertDialogAction>Got it!</AlertDialogAction>
-                  </AlertDialogFooter>
-              </AlertDialogContent>
-          </AlertDialog>
-        </CardHeader>
-        <CardContent className="p-6 md:p-8">
-          {isGameOver && !submittedScoreDetails ? ( 
-            <Card className="p-6 bg-muted/50 rounded-lg">
-              <CardTitle className="text-xl mb-4 font-headline text-primary">Game Over! Submit Your Score</CardTitle>
-               <div className="space-y-2 mb-4">
-                    <p><span className="font-semibold">Player:</span> {username}</p>
-                    <p><span className="font-semibold">Group:</span> {newGroup.trim() || selectedGroup || 'N/A'}</p>
-                  </div>
-              <div className="space-y-4">
-                <div><Label htmlFor="finalScore" className="text-foreground/80">Your Score</Label><Input id="finalScore" type="number" value={score} readOnly className="mt-1 bg-white" /></div>
-                <Button onClick={handleScoreSubmit} size="lg" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground font-semibold" disabled={isSubmitting}>{isSubmitting ? 'Submitting...' : <><Trophy className="mr-2 h-5 w-5" /> Submit Score</>}</Button>
-              </div>
-              <div className="text-center mt-6">
-                <Button onClick={handlePlayAgain} variant="outline" disabled={isSubmitting}><RotateCcw className="mr-2 h-4 w-4" /> Play Again</Button>
-              </div>
-            </Card>
-          ) : submittedScoreDetails ? ( 
-            <div className="text-center p-6 border border-green-500 bg-green-50 rounded-xl shadow-lg">
-              <CheckCircle2 className="h-12 w-12 text-green-600 mx-auto mb-3" /><p className="text-2xl font-semibold text-green-700 font-headline">Score Submitted!</p>
-              <p className="text-lg text-green-600 mt-1">Player: {submittedScoreDetails.username}</p><p className="text-lg text-green-600">Group: {submittedScoreDetails.group}</p>
-              <p className="text-3xl font-bold text-accent my-3">{submittedScoreDetails.score} points</p>
-              <div className="mt-4 space-x-3">
-                <Button onClick={handlePlayAgain} variant="outline"><RotateCcw className="mr-2 h-4 w-4" /> Play Again</Button>
-                <Button asChild><Link href="/leaderboard">View Leaderboards</Link></Button>
+            <div className="absolute bottom-0 left-0 p-6 flex items-end space-x-4">
+              <gameDetails.icon className="h-12 w-12 text-white drop-shadow-lg" />
+              <div>
+                <CardTitle className="font-headline text-4xl text-white drop-shadow-md">{gameDetails.name}</CardTitle>
+                <CardDescription className="text-gray-200 text-lg drop-shadow-sm">{gameDetails.description}</CardDescription>
               </div>
             </div>
-          ) : ( 
-            <div className="space-y-6">
+            <AlertDialog>
+                <AlertDialogTrigger asChild>
+                    <Button variant="ghost" size="icon" className="absolute top-4 right-4 text-white hover:bg-white/20 rounded-full p-2">
+                        <Info className="h-5 w-5" />
+                    </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                    <AlertDialogTitle>How to Play: {gameDetails.name}</AlertDialogTitle>
+                    <AlertDialogDescription className="text-left space-y-2 pt-2">
+                        <p>Welcome to {gameDetails.name}!</p>
+                        <p><strong>Objective:</strong> Score as many points as possible by hitting the target with your arrows.</p>
+                        <p><strong>Controls:</strong> Click or tap anywhere on the game screen, or press the <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Spacebar</kbd> to shoot an arrow.</p>
+                        <p><strong>Gameplay:</strong></p>
+                        <ul className="list-disc list-inside pl-4 space-y-1">
+                        <li>The bow moves up and down automatically. Time your shot!</li>
+                        <li>The target also moves up and down.</li>
+                        <li>You start with {INITIAL_ARROWS} arrows.</li>
+                        <li>Hitting the bullseye (9-10 points) awards you +2 bonus arrows.</li>
+                        <li>The game ends when you run out of arrows.</li>
+                        </ul>
+                        <p>For the best experience, play in landscape mode on mobile devices.</p>
+                    </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                    <AlertDialogAction>Got it!</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+          </CardHeader>
+          <CardContent className="p-6 md:p-8">
+            {isGameOver && !submittedScoreDetails ? ( 
               <Card className="p-6 bg-muted/50 rounded-lg">
-                <CardTitle className="text-xl mb-4 font-headline text-primary">Player Details</CardTitle>
+                <CardTitle className="text-xl mb-4 font-headline text-primary">Game Over! Submit Your Score</CardTitle>
+                 <div className="space-y-2 mb-4">
+                      <p><span className="font-semibold">Player:</span> {username}</p>
+                      <p><span className="font-semibold">Group:</span> {newGroup.trim() || selectedGroup || 'N/A'}</p>
+                    </div>
                 <div className="space-y-4">
-                  <div><Label htmlFor="username-setup" className="text-foreground/80">X Username</Label><Input id="username-setup" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="@yourusername" className="mt-1"/></div>
-                  <div><Label htmlFor="groupSelect-setup" className="text-foreground/80">Select Your K-pop Group</Label>
-                    <Select value={selectedGroup} onValueChange={(value) => { setSelectedGroup(value); setNewGroup(''); }}>
-                      <SelectTrigger id="groupSelect-setup" className="mt-1"><SelectValue placeholder="-- Select Your Group --" /></SelectTrigger>
-                      <SelectContent>{kpopGroups.map(gn => (<SelectItem key={gn} value={gn}>{gn} ({fanbaseMap[gn] || 'N/A'})</SelectItem>))}</SelectContent>
-                    </Select>
-                  </div>
-                  <div><Label htmlFor="newGroup-setup" className="text-foreground/80">Or Enter New Group Name</Label><Input id="newGroup-setup" value={newGroup} onChange={(e) => { setNewGroup(e.target.value); if (e.target.value) setSelectedGroup(''); }} placeholder="If not in list" className="mt-1"/></div>
+                  <div><Label htmlFor="finalScore" className="text-foreground/80">Your Score</Label><Input id="finalScore" type="number" value={gameScore} readOnly className="mt-1 bg-white" /></div>
+                  <Button onClick={handleScoreSubmit} size="lg" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground font-semibold" disabled={isSubmitting}>{isSubmitting ? 'Submitting...' : <><Trophy className="mr-2 h-5 w-5" /> Submit Score</>}</Button>
+                </div>
+                <div className="text-center mt-6">
+                  <Button onClick={handlePlayAgain} variant="outline" disabled={isSubmitting}><RotateCcw className="mr-2 h-4 w-4" /> Play Again & Start Over</Button>
                 </div>
               </Card>
-              <div className="bg-card border rounded-lg flex flex-col items-center justify-center p-6 min-h-[200px] w-full text-center shadow-inner">
-                <GameIcon className="h-16 w-16 text-primary mb-4" />
-                <h3 className="text-2xl font-bold font-headline text-primary mb-2">Ready for {gameDetails.name}?</h3>
-                 <p className="text-muted-foreground mb-1 max-w-md text-sm">Ensure you're in landscape mode on mobile for the best experience.</p>
-                 <p className="text-muted-foreground mb-4 max-w-md text-sm">Click the <Info size={16} className="inline -mt-1" /> icon above for full instructions.</p>
-                <Button onClick={startGame} size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold"><Play className="mr-2 h-6 w-6" />Start Game</Button>
+            ) : submittedScoreDetails ? ( 
+              <div className="text-center p-6 border border-green-500 bg-green-50 rounded-xl shadow-lg">
+                <CheckCircle2 className="h-12 w-12 text-green-600 mx-auto mb-3" /><p className="text-2xl font-semibold text-green-700 font-headline">Score Submitted!</p>
+                <p className="text-lg text-green-600 mt-1">Player: {submittedScoreDetails.username}</p><p className="text-lg text-green-600">Group: {submittedScoreDetails.group}</p>
+                <p className="text-3xl font-bold text-accent my-3">{submittedScoreDetails.score} points</p>
+                <div className="mt-4 space-x-3">
+                  <Button onClick={handlePlayAgain} variant="outline"><RotateCcw className="mr-2 h-4 w-4" /> Play Again</Button>
+                  <Button asChild><Link href="/leaderboard">View Leaderboards</Link></Button>
+                </div>
               </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      {isClient && !isGameActive && (<div className="my-8 text-center"><p className="mb-4 text-sm text-muted-foreground">Advertisement</p><AdSenseUnit adClient="ca-pub-6305491227155574" adSlot="6193979423" className="inline-block" /></div>)}
+            ) : ( // Pre-game view
+              <div className="space-y-6">
+                <Card className="p-6 bg-muted/50 rounded-lg">
+                  <CardTitle className="text-xl mb-4 font-headline text-primary">Player Details</CardTitle>
+                  <div className="space-y-4">
+                    <div><Label htmlFor="username-setup" className="text-foreground/80">X Username</Label><Input id="username-setup" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="@yourusername" className="mt-1"/></div>
+                    <div><Label htmlFor="groupSelect-setup" className="text-foreground/80">Select Your K-pop Group</Label>
+                      <Select value={selectedGroup} onValueChange={(value) => { setSelectedGroup(value); setNewGroup(''); }}>
+                        <SelectTrigger id="groupSelect-setup" className="mt-1"><SelectValue placeholder="-- Select Your Group --" /></SelectTrigger>
+                        <SelectContent>{kpopGroups.map(gn => (<SelectItem key={gn} value={gn}>{gn} ({fanbaseMap[gn] || 'N/A'})</SelectItem>))}</SelectContent>
+                      </Select>
+                    </div>
+                    <div><Label htmlFor="newGroup-setup" className="text-foreground/80">Or Enter New Group Name</Label><Input id="newGroup-setup" value={newGroup} onChange={(e) => { setNewGroup(e.target.value); if (e.target.value) setSelectedGroup(''); }} placeholder="If not in list" className="mt-1"/></div>
+                  </div>
+                </Card>
+                <div className="bg-card border rounded-lg flex flex-col items-center justify-center p-6 min-h-[200px] w-full text-center shadow-inner">
+                  <GameIcon className="h-16 w-16 text-primary mb-4" />
+                  <h3 className="text-2xl font-bold font-headline text-primary mb-2">Ready for {gameDetails.name}?</h3>
+                   <p className="text-muted-foreground mb-1 max-w-md text-sm">Ensure you're in landscape mode on mobile for the best experience.</p>
+                   <p className="text-muted-foreground mb-4 max-w-md text-sm">Click the <Info size={16} className="inline -mt-1" /> icon above for full instructions.</p>
+                  <Button onClick={handleStartGameClick} size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold"><Play className="mr-2 h-6 w-6" />Start Game</Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        {isClient && (isGameOver || (!isGameActive && !submittedScoreDetails)) && (<div className="my-8 text-center"><p className="mb-4 text-sm text-muted-foreground">Advertisement</p><AdSenseUnit adClient="ca-pub-6305491227155574" adSlot="6193979423" className="inline-block" /></div>)}
+      </div>
     </div>
   );
 }
-    

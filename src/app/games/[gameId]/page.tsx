@@ -177,16 +177,17 @@ export default function MiniGamePage() {
         ctx.drawImage(game.backgroundImage, 0, 0, W, H);
     }
 
-    const bowHeight = H * 0.18; // Increased from 0.15
+    // Adjusted scaling factors for larger appearance
+    const bowHeight = H * 0.225; // Approx 180px on 800px height
     const bowWidth = bowHeight * (120 / 180); 
     const bowX = W * 0.10;
 
-    const targetHeight = H * 0.15; // Increased from 0.12
+    const targetHeight = H * 0.20; // Approx 160px on 800px height
     const targetWidth = targetHeight * (100 / 160); 
     const targetX = W * 0.85;
     
-    const arrowHeight = H * 0.07; // Increased from 0.06
-    const arrowWidth = arrowHeight * (150 / 20);
+    const arrowHeight = H * 0.025; // Approx 20px on 800px height
+    const arrowWidth = arrowHeight * (100 / 20); // Arrow aspect ratio 100:20
 
     if (game.bowY === undefined) game.bowY = H / 2;
     if (game.targetY === undefined) game.targetY = H / 2;
@@ -209,7 +210,11 @@ export default function MiniGamePage() {
     if (game.targetImage) ctx.drawImage(game.targetImage, targetX - targetWidth / 2, game.targetY - targetHeight / 2, targetWidth, targetHeight);
 
     if (game.isArrowFlying) {
-      if (game.arrowX === undefined) game.arrowX = bowX + bowWidth;
+      if (game.arrowX === undefined) { // Should be set by handleShoot
+          const initialArrowX_bowX = W * 0.10;
+          const initialArrowX_bowWidth = (H * 0.225) * (120/180);
+          game.arrowX = initialArrowX_bowX + initialArrowX_bowWidth / 2;
+      }
       game.arrowX += ARROW_SPEED;
 
       if (game.arrowX > targetX - targetWidth / 2 && game.arrowX < targetX + targetWidth/2 &&
@@ -219,7 +224,7 @@ export default function MiniGamePage() {
         
         setGameScore(prev => {
           const newScore = prev + points;
-          if (newScore > 20 && !gameInstanceRef.current.bowSpeedIncremented) {
+          if (gameInstanceRef.current && newScore > 20 && !gameInstanceRef.current.bowSpeedIncremented) {
               gameInstanceRef.current.bowSpeedIncremented = true;
           }
           return newScore;
@@ -235,7 +240,9 @@ export default function MiniGamePage() {
         gameInstanceRef.current.isArrowFlying = false;
       }
     } else { 
-      game.arrowX = bowX + bowWidth / 2; 
+      const currentBowXPos = W * 0.10;
+      const currentBowWidthVal = (H * 0.225) * (120/180);
+      game.arrowX = currentBowXPos + currentBowWidthVal / 2; 
       if(game.bowY) game.arrowY = game.bowY; 
     }
 
@@ -367,7 +374,15 @@ export default function MiniGamePage() {
     if (game && game.bowY !== undefined) { 
       game.isArrowFlying = true;
       game.arrowY = game.bowY; 
-      game.arrowX = (window.innerWidth * 0.10) + ( (window.innerHeight * 0.18 * (120 / 180)) / 2 );  // Adjusted 0.15 to 0.18 for bowHeight
+      
+      // Ensure arrowX is set using current dimensions
+      const currentW = window.innerWidth;
+      const currentH = window.innerHeight;
+      const currentBowX = currentW * 0.10;
+      const currentBowHeight = currentH * 0.225; // Use new scaling
+      const currentBowWidth = currentBowHeight * (120 / 180);
+      game.arrowX = currentBowX + currentBowWidth / 2;
+      
       setArrowsLeft(prev => prev - 1);
     }
   }, [isGameActive, isGameOver, arrowsLeft, showRotatePrompt]); 
@@ -407,6 +422,8 @@ export default function MiniGamePage() {
       console.error("Failed to submit score:", error);
       const serverErrorMessage = error.message && error.message.includes("Database client not available")
         ? "Could not connect to the leaderboard server. Please try again later."
+        : error.message && error.message.includes("Failed to submit score. Database insert operation failed")
+        ? "Failed to submit score to the database. Please check server logs for details."
         : error.message || "Could not submit score.";
       toast({ title: "Submission Error", description: serverErrorMessage, variant: "destructive", duration: 7000 });
     } finally {
@@ -575,5 +592,3 @@ export default function MiniGamePage() {
     </div>
   );
 }
-
-    

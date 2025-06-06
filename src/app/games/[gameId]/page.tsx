@@ -72,7 +72,6 @@ export default function MiniGamePage() {
   const [isGameOver, setIsGameOver] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedScoreDetails, setSubmittedScoreDetails] = useState<{ score: number; username: string; group: string } | null>(null);
-  const [showInstructions, setShowInstructions] = useState(false); // Retained for AlertDialog
   const [showRotatePrompt, setShowRotatePrompt] = useState(false);
 
 
@@ -88,17 +87,251 @@ export default function MiniGamePage() {
     setBestScore(parseInt(localStorage.getItem(`bestScore_${gameId}`) || '0'));
   }, [gameId]);
 
+   const resetGameState = useCallback(() => {
+    setScore(0);
+    setArrowsLeft(INITIAL_ARROWS);
+    setIsGameOver(false);
+    setSubmittedScoreDetails(null);
+    
+    // Initialize game instance properties needed before the game loop starts
+    // Positions will be set precisely in the game initialization effect.
+    gameInstanceRef.current = {
+        // Keep existing images if they were loaded, otherwise they are undefined
+        backgroundImage: gameInstanceRef.current?.backgroundImage,
+        bowImage: gameInstanceRef.current?.bowImage,
+        targetImage: gameInstanceRef.current?.targetImage,
+        arrowImage: gameInstanceRef.current?.arrowImage,
+        bowY: undefined, // Will be set based on canvas height
+        bowDY: BOW_SPEED, // Critical to reset speed
+        targetY: undefined, // Will be set based on canvas height
+        targetDY: TARGET_SPEED, // Critical to reset speed
+        arrowX: undefined,
+        arrowY: undefined,
+        isArrowFlying: false,
+        bowSpeedIncremented: false,
+        animationFrameId: undefined,
+    };
+  }, []); // Dependencies: setScore, setArrowsLeft, setIsGameOver, setSubmittedScoreDetails are stable setters from useState
+
+
+  const actualGameLoop = useCallback(() => {
+    if (!isGameActive || isGameOver || !canvasRef.current || !gameInstanceRef.current) {
+      if (gameInstanceRef.current?.animationFrameId) {
+        cancelAnimationFrame(gameInstanceRef.current.animationFrameId);
+        gameInstanceRef.current.animationFrameId = undefined;
+      }
+      return;
+    }
+
+    const game = gameInstanceRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) {
+      console.error("Context not available in game loop");
+      setIsGameActive(false); // Stop the game
+      return;
+    }
+    
+    // Use logical pixel dimensions for game logic
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+
+    ctx.clearRect(0, 0, W, H); // Clear using logical dimensions
+
+    if (game.backgroundImage) {
+        ctx.drawImage(game.backgroundImage, 0, 0, W, H);
+    }
+
+    const bowHeight = H * 0.15;
+    const bowWidth = bowHeight * (120 / 180); // aspect ratio 120/180
+    const bowX = W * 0.10;
+
+    const targetHeight = H * 0.12;
+    const targetWidth = targetHeight * (100 / 160); // aspect ratio 100/160
+    const targetX = W * 0.85;
+    
+    const arrowHeight = H * 0.06; // Arrow sprite is thinner
+    const arrowWidth = arrowHeight * (150 / 20); // aspect ratio 150/20
+
+    // Initialize positions if undefined (first frame after image load)
+    if (game.bowY === undefined) game.bowY = H / 2;
+    if (game.targetY === undefined) game.targetY = H / 2;
+    
+    // Bow movement
+    let currentBowSpeed = BOW_SPEED * (game.bowSpeedIncremented ? 1.5 : 1);
+    if (game.bowDY === undefined || game.bowDY === 0) game.bowDY = BOW_SPEED; // Ensure direction/speed
+    game.bowDY = Math.sign(game.bowDY) * currentBowSpeed;
+    
+    game.bowY += game.bowDY;
+    if (game.bowY + bowHeight / 2 > H * 0.85 || game.bowY - bowHeight / 2 < H * 0.15) {
+      game.bowDY *= -1;
+    }
+    if (game.bowImage) ctx.drawImage(game.bowImage, bowX, game.bowY - bowHeight / 2, bowWidth, bowHeight);
+
+    // Target movement
+    if (game.targetDY === undefined || game.targetDY === 0) game.targetDY = TARGET_SPEED; // Ensure direction/speed
+    game.targetY += game.targetDY;
+    if (game.targetY + targetHeight / 2 > H * 0.9 || game.targetY - targetHeight / 2 < H * 0.1) {
+      game.targetDY *= -1;
+    }
+    if (game.targetImage) ctx.drawImage(game.targetImage, targetX - targetWidth / 2, game.targetY - targetHeight / 2, targetWidth, targetHeight);
+
+    // Arrow logic
+    if (game.isArrowFlying) {
+      if (game.arrowX === undefined) game.arrowX = bowX + bowWidth; // Start arrow from bow
+      // game.arrowY is set at the moment of shooting by handleShoot
+      
+      game.arrowX += ARROW_SPEED;
+
+      // Collision detection
+      if (game.arrowX > targetX - targetWidth / 2 && game.arrowX < targetX + targetWidth/2 &&
+          game.arrowY && game.arrowY > game.targetY - targetHeight / 2 && game.arrowY < game.targetY + targetHeight / 2) {
+        const offset = Math.abs(game.arrowY - game.targetY);
+        const points = Math.max(0, 10 - Math.floor(offset / (targetHeight / 20))); // Points based on accuracy
+        
+        setScore(prev => {
+          const newScore = prev + points;
+          if (newScore > 20 && !gameInstanceRef.current.bowSpeedIncremented) {
+              gameInstanceRef.current.bowSpeedIncremented = true;
+          }
+          return newScore;
+        });
+
+        if (points >= 9) { // Bullseye bonus
+          setArrowsLeft(prev => prev + 2);
+        }
+        gameInstanceRef.current.isArrowFlying = false; // Arrow hit, stop flying
+      }
+
+      // Arrow missed and off-screen
+      if (game.arrowX > W) {
+        gameInstanceRef.current.isArrowFlying = false;
+      }
+    } else { // Arrow is nocked
+      game.arrowX = bowX + bowWidth / 2; 
+      if(game.bowY) game.arrowY = game.bowY; // Follow bow's Y position
+    }
+
+    if (game.isArrowFlying && game.arrowImage && game.arrowY) { // Draw flying arrow
+       ctx.drawImage(game.arrowImage, game.arrowX, game.arrowY - arrowHeight / 2, arrowWidth, arrowHeight);
+    }
+
+    // Draw UI
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 24px Poppins';
+    ctx.shadowColor = 'black';
+    ctx.shadowBlur = 5;
+    ctx.textAlign = 'left';
+    ctx.fillText(`Score: ${score}`, 20, 40);
+    ctx.fillText(`Arrows: ${arrowsLeft}`, 20, 70);
+    ctx.textAlign = 'right';
+    ctx.fillText(`Best: ${bestScore}`, W - 20, 40);
+    ctx.shadowBlur = 0;
+
+    // Game Over condition
+    if (arrowsLeft <= 0 && !gameInstanceRef.current.isArrowFlying && !isGameOver) {
+      setIsGameOver(true);
+      setIsGameActive(false); // This will stop the loop via the check at the top
+      if (score > bestScore) {
+        setBestScore(score);
+        localStorage.setItem(`bestScore_${gameId}`, score.toString());
+      }
+      toast({
+        title: "Game Over!",
+        description: `You scored ${score} points. ${score > bestScore ? "That's a new personal best!" : ""}`,
+      });
+    } else {
+      gameInstanceRef.current.animationFrameId = requestAnimationFrame(actualGameLoop);
+    }
+  }, [isGameActive, isGameOver, score, arrowsLeft, bestScore, gameId, toast, setIsGameActive, setIsGameOver, setScore, setArrowsLeft, setBestScore]);
+
+
+  // Effect for game initialization (canvas setup, asset loading, starting loop)
+  useEffect(() => {
+    if (isGameActive && !isGameOver && canvasRef.current && isClient) {
+      const game = gameInstanceRef.current; // Already initialized by resetGameState
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+
+      if (!ctx) {
+        console.error("Failed to get canvas context for game initialization.");
+        toast({ title: "Error", description: "Could not initialize game canvas.", variant: "destructive" });
+        setIsGameActive(false);
+        return;
+      }
+
+      // Setup canvas dimensions and scaling
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      canvas.style.width = `${window.innerWidth}px`;
+      canvas.style.height = `${window.innerHeight}px`;
+      ctx.scale(dpr, dpr);
+
+      const loadImage = (src: string): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
+          const img = new window.Image();
+          img.onload = () => resolve(img);
+          img.onerror = (e) => {
+            console.error(`Failed to load image: ${src}`, e);
+            reject(new Error(`Failed to load image: ${src}`));
+          };
+          img.src = src;
+      });
+
+      // Load assets then start game loop
+      Promise.all([
+          loadImage('/assets/stadium-background.png'),
+          loadImage('/assets/bow-sprite.png'),
+          loadImage('/assets/target-sprite.png'),
+          loadImage('/assets/arrow-sprite.png'),
+      ]).then(([bg, bowImg, targetImg, arrowImg]) => {
+          game.backgroundImage = bg;
+          game.bowImage = bowImg;
+          game.targetImage = targetImg;
+          game.arrowImage = arrowImg;
+
+          // Initial positions based on current screen size
+          const H_logical = window.innerHeight;
+          game.bowY = H_logical / 2;
+          game.targetY = H_logical / 2;
+          if (game.bowDY === undefined || game.bowDY === 0) game.bowDY = BOW_SPEED;
+          if (game.targetDY === undefined || game.targetDY === 0) game.targetDY = TARGET_SPEED;
+
+
+          if (gameInstanceRef.current && isGameActive && !isGameOver) { // Check again before starting loop
+            gameInstanceRef.current.animationFrameId = requestAnimationFrame(actualGameLoop);
+          }
+      }).catch(err => {
+          console.error("Failed to load game assets:", err);
+          toast({title: "Asset Loading Error", description: String(err) || "Could not load game assets. Please try refreshing.", variant: "destructive", duration: 7000});
+          setIsGameActive(false); // Stop game if assets fail
+      });
+
+      return () => { // Cleanup function for this effect
+        if (gameInstanceRef.current?.animationFrameId) {
+          cancelAnimationFrame(gameInstanceRef.current.animationFrameId);
+          gameInstanceRef.current.animationFrameId = undefined;
+        }
+      };
+    } else if ((!isGameActive || isGameOver) && gameInstanceRef.current?.animationFrameId) {
+      // If game becomes inactive or over, ensure loop is stopped
+      cancelAnimationFrame(gameInstanceRef.current.animationFrameId);
+      gameInstanceRef.current.animationFrameId = undefined;
+    }
+  }, [isGameActive, isGameOver, isClient, toast, setIsGameActive, actualGameLoop]); // actualGameLoop is a dependency
+
+  // Effect for handling resize and orientation changes WHILE game is active
   useEffect(() => {
       if (!isClient || !isGameActive || !canvasRef.current) return;
 
-      const handleResize = () => {
+      const handleResizeOrOrientation = () => {
           const canvas = canvasRef.current;
           if (!canvas) return;
+          
           const dpr = window.devicePixelRatio || 1;
-          // Set canvas actual size (scaled by DPR)
           canvas.width = window.innerWidth * dpr;
           canvas.height = window.innerHeight * dpr;
-          // Set canvas display size (CSS pixels)
           canvas.style.width = `${window.innerWidth}px`;
           canvas.style.height = `${window.innerHeight}px`;
           
@@ -106,44 +339,33 @@ export default function MiniGamePage() {
           if (ctx) {
             ctx.scale(dpr, dpr); // Scale context for HiDPI rendering
           }
+          // Game objects might need repositioning if their logic doesn't adapt to W/H changes in the loop
+          // The current loop re-calculates sizes based on H, so it should adapt somewhat.
+          // Explicitly re-initialize bow/target Y if needed, or ensure loop does it.
+          if (gameInstanceRef.current) {
+            const H_logical = window.innerHeight;
+            // gameInstanceRef.current.bowY = H_logical / 2; // Optional: recenter on resize
+            // gameInstanceRef.current.targetY = H_logical / 2;
+          }
       };
-
-      const handleOrientationChange = () => {
+      
+      const handleOrientationSpecifics = () => {
           const isPortrait = window.innerHeight > window.innerWidth;
           const isLikelyMobile = window.matchMedia("(max-width: 767px)").matches;
           setShowRotatePrompt(isGameActive && isPortrait && isLikelyMobile);
-          setTimeout(handleResize, 50); // Allow layout to settle, then resize canvas
+          setTimeout(handleResizeOrOrientation, 50); 
       };
 
-      window.addEventListener('resize', handleResize);
-      window.addEventListener('orientationchange', handleOrientationChange);
+      window.addEventListener('resize', handleOrientationSpecifics); // Use one handler that calls both
+      window.addEventListener('orientationchange', handleOrientationSpecifics);
       
-      handleOrientationChange(); // Initial check for orientation
-      handleResize(); // Initial resize of canvas
+      handleOrientationSpecifics(); // Initial check
 
       return () => {
-          window.removeEventListener('resize', handleResize);
-          window.removeEventListener('orientationchange', handleOrientationChange);
+          window.removeEventListener('resize', handleOrientationSpecifics);
+          window.removeEventListener('orientationchange', handleOrientationSpecifics);
       };
   }, [isClient, isGameActive]);
-
-
-  const resetGameState = useCallback(() => {
-    setScore(0);
-    setArrowsLeft(INITIAL_ARROWS);
-    setIsGameOver(false);
-    setSubmittedScoreDetails(null);
-    // Reset game instance details including positions
-    const H = window.innerHeight; // Use current window height for reset
-    gameInstanceRef.current = {
-        bowY: H / 2,
-        bowDY: BOW_SPEED,
-        targetY: H / 2,
-        targetDY: TARGET_SPEED,
-        isArrowFlying: false,
-        bowSpeedIncremented: false,
-    };
-  }, []);
 
 
   const startGame = () => {
@@ -160,188 +382,24 @@ export default function MiniGamePage() {
     localStorage.setItem('isacStudioUsername', username.trim());
     localStorage.setItem('isacStudioGroup', finalGroup);
 
-    resetGameState();
-    setIsGameActive(true);
-    // setShowInstructions(false); // Instructions are in AlertDialog, shown by user click
-
-    const game = gameInstanceRef.current;
-    const canvas = canvasRef.current;
-    if (!canvas || !game) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    // Ensure canvas is sized correctly for DPR at game start
-    canvas.width = window.innerWidth * dpr;
-    canvas.height = window.innerHeight * dpr;
-    canvas.style.width = `${window.innerWidth}px`;
-    canvas.style.height = `${window.innerHeight}px`;
-    ctx.scale(dpr, dpr);
-
-
-    const loadImage = (src: string): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
-        const img = new window.Image();
-        img.onload = () => resolve(img);
-        img.onerror = reject;
-        img.src = src;
-    });
-
-    Promise.all([
-        loadImage('/assets/stadium-background.png'),
-        loadImage('/assets/bow-sprite.png'),
-        loadImage('/assets/target-sprite.png'),
-        loadImage('/assets/arrow-sprite.png'),
-    ]).then(([bg, bowImg, targetImg, arrowImg]) => {
-        game.backgroundImage = bg;
-        game.bowImage = bowImg;
-        game.targetImage = targetImg;
-        game.arrowImage = arrowImg;
-
-        // Ensure initial positions are set based on current screen dimensions
-        const W_logical = window.innerWidth; // Logical width
-        const H_logical = window.innerHeight; // Logical height
-        game.bowY = H_logical / 2;
-        game.targetY = H_logical / 2;
-
-
-        const gameLoop = () => {
-          // Check isGameActive from state, not a local variable that might be stale
-          if (!isGameActive || isGameOver || !canvasRef.current) { // Use component state
-            if (game.animationFrameId) cancelAnimationFrame(game.animationFrameId);
-            return;
-          }
-
-          const W = window.innerWidth; // Use logical pixels for game logic
-          const H = window.innerHeight;
-
-          ctx.clearRect(0, 0, W, H); // Clear using logical dimensions
-
-          if (game.backgroundImage) {
-              ctx.drawImage(game.backgroundImage, 0, 0, W, H);
-          }
-
-          const bowHeight = H * 0.15;
-          const bowWidth = bowHeight * (120 / 180);
-          const bowX = W * 0.10;
-
-          const targetHeight = H * 0.12;
-          const targetWidth = targetHeight * (100 / 160);
-          const targetX = W * 0.85;
-
-          const arrowHeight = H * 0.06;
-          const arrowWidth = arrowHeight * (150 / 20);
-
-          if (game.bowY === undefined) game.bowY = H / 2;
-          if (game.bowDY === undefined) game.bowDY = BOW_SPEED;
-          let currentBowSpeed = BOW_SPEED * (game.bowSpeedIncremented ? 1.5 : 1);
-          game.bowDY = game.bowDY > 0 ? currentBowSpeed : -currentBowSpeed;
-
-
-          game.bowY += game.bowDY;
-          if (game.bowY + bowHeight / 2 > H * 0.85 || game.bowY - bowHeight / 2 < H * 0.15) {
-            game.bowDY *= -1;
-          }
-          if (game.bowImage) ctx.drawImage(game.bowImage, bowX, game.bowY - bowHeight / 2, bowWidth, bowHeight);
-
-          if (game.targetY === undefined) game.targetY = H / 2;
-          if (game.targetDY === undefined) game.targetDY = TARGET_SPEED;
-          game.targetY += game.targetDY;
-          if (game.targetY + targetHeight / 2 > H * 0.9 || game.targetY - targetHeight / 2 < H * 0.1) {
-            game.targetDY *= -1;
-          }
-          if (game.targetImage) ctx.drawImage(game.targetImage, targetX - targetWidth / 2, game.targetY - targetHeight / 2, targetWidth, targetHeight);
-
-          if (game.isArrowFlying) {
-            if (game.arrowX === undefined) game.arrowX = bowX + bowWidth; // Start arrow from bow
-            if (game.arrowY === undefined && game.bowY) game.arrowY = game.bowY; // Lock Y at shoot time
-            
-            game.arrowX += ARROW_SPEED;
-
-            if (game.arrowX > targetX - targetWidth / 2 && game.arrowX < targetX + targetWidth/2 &&
-                game.arrowY && game.arrowY > game.targetY - targetHeight / 2 && game.arrowY < game.targetY + targetHeight / 2) {
-              const offset = Math.abs(game.arrowY - game.targetY);
-              const points = Math.max(0, 10 - Math.floor(offset / (targetHeight / 20)));
-              
-              setScore(prev => {
-                const newScore = prev + points;
-                if (newScore > 20 && !game.bowSpeedIncremented) {
-                    game.bowSpeedIncremented = true;
-                }
-                return newScore;
-              });
-
-              if (points >= 9) {
-                setArrowsLeft(prev => prev + 2);
-              }
-              game.isArrowFlying = false;
-            }
-
-            if (game.arrowX > W) {
-              game.isArrowFlying = false;
-            }
-          } else {
-            game.arrowX = bowX + bowWidth / 2; // Nocking point
-            if(game.bowY) game.arrowY = game.bowY;
-          }
-
-          if (game.isArrowFlying && game.arrowImage && game.arrowY) {
-             ctx.drawImage(game.arrowImage, game.arrowX, game.arrowY - arrowHeight / 2, arrowWidth, arrowHeight);
-          }
-
-          ctx.fillStyle = 'white';
-          ctx.font = 'bold 24px Poppins';
-          ctx.shadowColor = 'black';
-          ctx.shadowBlur = 5;
-          ctx.textAlign = 'left';
-          ctx.fillText(`Score: ${score}`, 20, 40);
-          ctx.fillText(`Arrows: ${arrowsLeft}`, 20, 70);
-          ctx.textAlign = 'right';
-          ctx.fillText(`Best: ${bestScore}`, W - 20, 40);
-          ctx.shadowBlur = 0; // Reset shadow
-
-
-          if (arrowsLeft <= 0 && !game.isArrowFlying && !isGameOver) { // Check component state for isGameOver
-            setIsGameOver(true); // Set game over state
-            setIsGameActive(false); // This will eventually stop the loop
-            if (score > bestScore) { // Compare with component state bestScore
-              setBestScore(score); // Update component state bestScore
-              localStorage.setItem(`bestScore_${gameId}`, score.toString());
-            }
-            toast({
-              title: "Game Over!",
-              description: `You scored ${score} points. ${score > bestScore ? "That's a new personal best!" : ""}`,
-            });
-            // No need to cancel animationFrameId here, the check at the start of the loop will handle it
-          }
-          game.animationFrameId = requestAnimationFrame(gameLoop);
-        };
-        // Start the loop
-        if (isGameActive && !isGameOver) { // Check component state before starting
-             game.animationFrameId = requestAnimationFrame(gameLoop);
-        }
-    }).catch(err => {
-        console.error("Failed to load game assets:", err);
-        toast({title: "Error", description: "Could not load game assets. Please try again.", variant: "destructive"});
-        setIsGameActive(false); // Ensure game doesn't proceed
-    });
+    resetGameState(); // Resets scores, arrows, and gameInstanceRef properties
+    setIsGameActive(true); // This will trigger the game initialization useEffect
   };
 
   const handleShoot = useCallback(() => {
-    // Use component state for checks
     if (!isGameActive || isGameOver || gameInstanceRef.current?.isArrowFlying || arrowsLeft <= 0) return;
 
     const game = gameInstanceRef.current;
-    if (game && game.bowY) { // Ensure bowY is defined before setting arrowY
+    if (game && game.bowY !== undefined) { 
       game.isArrowFlying = true;
-      game.arrowY = game.bowY; // Lock arrow's Y position to current bow Y at the moment of shooting
-      // game.arrowX is set when not flying or at the start of flight
+      game.arrowY = game.bowY; 
+      game.arrowX = (window.innerWidth * 0.10) + ( (window.innerHeight * 0.15 * (120 / 180)) / 2 ); // Recalculate arrow start X
       setArrowsLeft(prev => prev - 1);
     }
-  }, [isGameActive, isGameOver, arrowsLeft]); // Dependencies on component state
+  }, [isGameActive, isGameOver, arrowsLeft]); 
 
   useEffect(() => {
-    if (!isGameActive) return; // Only add listener if game is active
+    if (!isGameActive) return; 
 
     const handleKeyPress = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
@@ -351,29 +409,29 @@ export default function MiniGamePage() {
     };
     document.addEventListener('keydown', handleKeyPress);
     return () => document.removeEventListener('keydown', handleKeyPress);
-  }, [isGameActive, handleShoot]); // Re-bind if isGameActive or handleShoot changes
+  }, [isGameActive, handleShoot]); 
 
 
   const handleScoreSubmit = async () => {
     const finalUsername = username.trim();
     const finalGroup = (newGroup.trim() || selectedGroup).trim();
 
-    if (!finalUsername || !finalGroup || score < 0) { // Use component state 'score'
+    if (!finalUsername || !finalGroup || score < 0) { 
       toast({ title: "Validation Error", description: "Please ensure username, group, and score are valid.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
     try {
-      const payload: AddScorePayload = { username: finalUsername, group: finalGroup, gameId, score }; // Use component state 'score'
+      const payload: AddScorePayload = { username: finalUsername, group: finalGroup, gameId, score }; 
       await addScoreToLeaderboardAction(payload);
       if (progressContext && !progressContext.isGameCompleted(gameId)) {
         progressContext.completeGame(gameId);
       }
-      setSubmittedScoreDetails({ score, username: finalUsername, group: finalGroup }); // Use component state 'score'
+      setSubmittedScoreDetails({ score, username: finalUsername, group: finalGroup }); 
       toast({ title: "Score Submitted!", description: `Your score of ${score} has been recorded.`, className: "bg-green-500 text-white" });
     } catch (error: any) {
       console.error("Failed to submit score:", error);
-      const serverErrorMessage = error.message && error.message.includes("Database client not available")
+      const serverErrorMessage = error.message && error.message.includes("Database client not available") // Simplified check
         ? "Could not connect to the leaderboard server. Please try again later."
         : error.message || "Could not submit score.";
       toast({ title: "Submission Error", description: serverErrorMessage, variant: "destructive", duration: 7000 });
@@ -383,25 +441,16 @@ export default function MiniGamePage() {
   };
 
   const handlePlayAgain = () => {
-    setIsGameActive(false); 
-    setIsGameOver(false); // Explicitly set isGameOver to false
-    if (gameInstanceRef.current?.animationFrameId) {
-      cancelAnimationFrame(gameInstanceRef.current.animationFrameId);
-      gameInstanceRef.current.animationFrameId = undefined;
-    }
-    resetGameState(); 
-    // User will click "Start Game" button again from the setup screen.
-    // This brings them back to the pre-game card.
+    setIsGameActive(false); // This will stop the loop via useEffect cleanup
+    setIsGameOver(false); 
+    // resetGameState(); // Called by startGame when user clicks "Start Game" again
+    // No need to explicitly cancel animation frame here, useEffect cleanup for isGameActive handles it.
   };
 
   const handleQuitGame = () => {
-    setIsGameActive(false);
-    setIsGameOver(true); // Treat as game over to show submission UI
-     if (gameInstanceRef.current?.animationFrameId) {
-        cancelAnimationFrame(gameInstanceRef.current.animationFrameId);
-        gameInstanceRef.current.animationFrameId = undefined;
-    }
-    // Update best score if current score is higher
+    setIsGameActive(false); // This stops the game loop.
+    setIsGameOver(true); // To show submission UI.
+     // No need to explicitly cancel animation frame here, useEffect cleanup for isGameActive handles it.
     if (score > bestScore) {
         setBestScore(score);
         localStorage.setItem(`bestScore_${gameId}`, score.toString());
@@ -413,11 +462,11 @@ export default function MiniGamePage() {
     return <div className="text-center py-10"><h1 className="text-2xl font-bold text-destructive font-headline">Game not found!</h1><Button asChild className="mt-4"><Link href="/"><ArrowLeft className="mr-2 h-4 w-4" />Go back</Link></Button></div>;
   }
 
-  if (isGameActive) { // Fullscreen game view
+  if (isGameActive) { 
       return (
           <div 
-            className="fixed inset-0 z-[60] bg-background cursor-pointer" // Higher z-index, ensure cursor pointer for tap
-            onClick={handleShoot} // Universal click/tap handler for shooting
+            className="fixed inset-0 z-[60] bg-gray-800 cursor-pointer" // Changed background for better visibility if canvas transparent
+            onClick={handleShoot} 
           >
               <canvas ref={canvasRef} className="w-full h-full block outline-none" tabIndex={0} />
               {showRotatePrompt && <RotateDevicePrompt />}
@@ -425,19 +474,18 @@ export default function MiniGamePage() {
                   variant="ghost"
                   size="icon"
                   onClick={(e) => {
-                      e.stopPropagation(); // Prevent shoot on quit
+                      e.stopPropagation(); 
                       handleQuitGame();
                   }}
                   className="absolute top-4 right-4 z-[70] bg-black/40 hover:bg-black/60 text-white rounded-full p-2"
                   title="Quit Game"
               >
-                  <RotateCcw className="h-5 w-5" /> {/* Slightly smaller icon for less intrusion */}
+                  <RotateCcw className="h-5 w-5" /> 
               </Button>
           </div>
       );
   }
 
-  // Pre-game, game over, or score submitted view (within the card layout)
   return (
     <div className="space-y-8">
       <Button variant="outline" asChild className="mb-6 group">
@@ -488,7 +536,7 @@ export default function MiniGamePage() {
           </AlertDialog>
         </CardHeader>
         <CardContent className="p-6 md:p-8">
-          {isGameOver && !submittedScoreDetails ? ( // Game is over, show score submission UI
+          {isGameOver && !submittedScoreDetails ? ( 
             <Card className="p-6 bg-muted/50 rounded-lg">
               <CardTitle className="text-xl mb-4 font-headline text-primary">Game Over! Submit Your Score</CardTitle>
                <div className="space-y-2 mb-4">
@@ -503,7 +551,7 @@ export default function MiniGamePage() {
                 <Button onClick={handlePlayAgain} variant="outline" disabled={isSubmitting}><RotateCcw className="mr-2 h-4 w-4" /> Play Again</Button>
               </div>
             </Card>
-          ) : submittedScoreDetails ? ( // Score has been submitted
+          ) : submittedScoreDetails ? ( 
             <div className="text-center p-6 border border-green-500 bg-green-50 rounded-xl shadow-lg">
               <CheckCircle2 className="h-12 w-12 text-green-600 mx-auto mb-3" /><p className="text-2xl font-semibold text-green-700 font-headline">Score Submitted!</p>
               <p className="text-lg text-green-600 mt-1">Player: {submittedScoreDetails.username}</p><p className="text-lg text-green-600">Group: {submittedScoreDetails.group}</p>
@@ -513,7 +561,7 @@ export default function MiniGamePage() {
                 <Button asChild><Link href="/leaderboard">View Leaderboards</Link></Button>
               </div>
             </div>
-          ) : ( // Pre-game setup UI
+          ) : ( 
             <div className="space-y-6">
               <Card className="p-6 bg-muted/50 rounded-lg">
                 <CardTitle className="text-xl mb-4 font-headline text-primary">Player Details</CardTitle>
@@ -543,4 +591,4 @@ export default function MiniGamePage() {
     </div>
   );
 }
-
+    
